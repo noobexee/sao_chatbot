@@ -1,0 +1,10 @@
+{
+  "restAPI": {
+    "apiKey": "disabled"
+  },
+  "modules": {
+    "text2vec-contextionary": {
+      "enabled": false
+    }
+  }
+}

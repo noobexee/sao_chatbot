@@ -1,0 +1,50 @@
+services:
+  backend:
+    build:
+      context: ./apps/sao_chatbot_backend
+      dockerfile: Dockerfile
+    ports:
+      - "${BACKEND_PORT}:${BACKEND_PORT}"
+    restart: unless-stopped
+    env_file:
+      - ./.env
+      - ./apps/sao_chatbot_backend/.env
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT}
+    depends_on:
+      - redis
+    networks:
+      - app-net
+
+  frontend:
+    build:
+      context: ./apps/sao_chatbot_frontend
+      dockerfile: Dockerfile
+    ports:
+      - "${FRONTEND_PORT}:${FRONTEND_PORT}"
+    restart: unless-stopped
+    env_file:
+      - ./apps/sao_chatbot_frontend/.env.production
+    depends_on:
+      - backend
+    networks:
+      - app-net
+
+  redis:
+    image: redis:alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT}:${REDIS_PORT}"
+    volumes:
+      - redis-data:/data
+    networks:
+      - app-net
+
+volumes:
+  redis-data:
+    driver: local
+
+networks:
+  app-net:
+    driver: bridge
