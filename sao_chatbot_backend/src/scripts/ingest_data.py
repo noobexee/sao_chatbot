@@ -1,0 +1,1 @@
+# one-time setup script. You run this before starting your app to read your documents, create embeddings, and build your vector store.

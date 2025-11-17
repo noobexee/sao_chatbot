@@ -1,0 +1,41 @@
+# Ignore the build files and git history
+Dockerfile
+docker-compose.yml
+.dockerignore
+.git/
+.gitignore
+
+# --- Python Virtual Environment ---
+.venv/
+venv/
+*env/
+env/
+
+# --- Python Cache ---
+__pycache__/
+*.py[cod]
+
+# --- Secrets ---
+# CRITICAL: Never copy your .env file into the image
+.env
+.env.*
+
+# --- Data & Databases ---
+# These are stateful and should be mounted as volumes,
+# not built into the image.
+/data/
+/vector_store/
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.db
+
+# --- Code & Documentation ---
+/tests/
+README.md
+
+# --- OS & IDE Specific ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

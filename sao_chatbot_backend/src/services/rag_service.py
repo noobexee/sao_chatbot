@@ -1,0 +1,1 @@
+#Connects the API to the app. It contains the get_rag_response function that the api layer calls. This function is what actually invokes the LangGraph.

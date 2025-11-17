@@ -1,0 +1,1 @@
+#Defines your API data structure. It holds the Pydantic models (e.g., QueryRequest, QueryResponse) to validate incoming and outgoing data.
