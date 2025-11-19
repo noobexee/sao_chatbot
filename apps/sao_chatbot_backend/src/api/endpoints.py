@@ -1,1 +1,0 @@
-#Defines your API routes. It has the @router.post("/query") code that receives the user's JSON request

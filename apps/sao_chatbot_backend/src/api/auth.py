@@ -13,8 +13,6 @@ class LoginSchema(BaseModel):
     password: str
 
 
-
-
 @router.post("/login")
 async def login(payload: LoginSchema, response: Response):
     ok = bind_user(payload.email, payload.password)
