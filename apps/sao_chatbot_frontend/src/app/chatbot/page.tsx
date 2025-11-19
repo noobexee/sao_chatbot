@@ -2,7 +2,7 @@ import Image from "next/image";
 
 export default function ChatPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-4">
+    <div className="flex flex-col items-center justify-center px-4">
         
         <div className="mb-6">
           <Image

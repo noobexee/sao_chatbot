@@ -4,7 +4,7 @@ export default function SpecificChatPage({ params }: { params: { chatId: string 
 
   return (
     <div className="relative flex h-full flex-col bg-white">
-      <div className="flex-1 overflow-y-auto px-4 pt-24 pb-32 scroll-smooth">
+      <div className="flex-1 overflow-y-auto scroll-smooth">
         <div className="mx-auto max-w-3xl space-y-6">
           
           <div className="flex w-full gap-3 items-start">
