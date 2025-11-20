@@ -28,7 +28,7 @@ async def login(payload: LoginSchema, response: Response):
         httponly=True,
         samesite="lax",
         max_age=settings.JWT_EXP_HOURS * 3600,
-        secure=False, # set True in production over HTTPS
+        secure=False,
     )
 
     return {"status": "ok"}
