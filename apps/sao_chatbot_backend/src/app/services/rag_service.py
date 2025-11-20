@@ -61,8 +61,6 @@ class RAGService:
             
             cur = conn.cursor()
             
-            # POSTGRES MAGIC: 'DISTINCT ON (session_id)' gets unique sessions.
-            # We sort by 'created_at ASC' to grab the VERY FIRST message as the title.
             query = """
                 SELECT DISTINCT ON (session_id) 
                     session_id, 

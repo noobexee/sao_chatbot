@@ -7,11 +7,11 @@ services:
       - "${BACKEND_PORT}:${BACKEND_PORT}"
     restart: unless-stopped
     env_file:
-      - ./.env
       - ./apps/sao_chatbot_backend/.env
     environment:
       REDIS_HOST: redis
       REDIS_PORT: ${REDIS_PORT}
+      SQL_DATABASE_URL: ${SQL_DATABASE_URL}
     depends_on:
       - redis
     networks:
@@ -24,6 +24,8 @@ services:
     ports:
       - "${FRONTEND_PORT}:${FRONTEND_PORT}"
     restart: unless-stopped
+    extra_hosts:
+      - "localhost:host-gateway"
     env_file:
       - ./apps/sao_chatbot_frontend/.env.production
     depends_on:
@@ -48,3 +50,4 @@ volumes:
 networks:
   app-net:
     driver: bridge
+
