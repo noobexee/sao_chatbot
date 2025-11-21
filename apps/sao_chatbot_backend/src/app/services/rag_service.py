@@ -1,136 +1,92 @@
-import json
-import os
-import psycopg2
+from typing import List, Any, Dict
+from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.output_parsers import StrOutputParser
 from src.api.v1.models.rag_response import RAGResponse
 from src.app.services.llm_manager import get_llm
+from src.db.repositories.chat_repository import ChatRepository
 
 class RAGService:
     def __init__(self):
         self.llm = get_llm()
-        self.db_url = os.getenv("SQL_DATABASE_URL")
+        self.repository = ChatRepository() 
 
-    def _get_db_connection(self):
-        if not self.db_url:
-            print("⚠️ Warning: DATABASE_URL is not set.")
-            return None
-        return psycopg2.connect(self.db_url)
-
-    def save_to_history(self, user_id: int, session_id: str, query: str, answer: str):
-        conn = None
-        try:
-            conn = self._get_db_connection()
-            if not conn:
-                return
-
-            conn.autocommit = True 
-            cur = conn.cursor()
-
-            insert_query = """
-                INSERT INTO conversations 
-                (user_id, session_id, user_message, ai_message, retrieval_context)
-                VALUES (%s, %s, %s, %s, %s)
-            """
-            
-            cur.execute(insert_query, (
-                user_id, 
-                session_id, 
-                query, 
-                answer, 
-                json.dumps([]) 
-            ))
-            
-            print("🔥 DEBUG: Insert executed successfully!") 
-            cur.close()
-
-        except Exception as e:
-            print(f"ERROR SAVING TO DB: {e}")
-        finally:
-            if conn:
-                conn.close()
-
-    def get_user_sessions(self, user_id: int) -> list:
+    def _get_history_objects(self, user_id: int, session_id: str) -> List[Any]:
         """
-        Returns a list of chat sessions for the user to display in the sidebar.
-        Uses the FIRST user message as the 'Title' of the chat.
+        Converts raw DB rows -> LangChain Message Objects
         """
-        conn = None
-        sessions = []
-        try:
-            conn = self._get_db_connection()
-            if not conn: return []
-            
-            cur = conn.cursor()
-            
-            query = """
-                SELECT DISTINCT ON (session_id) 
-                    session_id, 
-                    user_message as title, 
-                    created_at
-                FROM conversations
-                WHERE user_id = %s
-                ORDER BY session_id, created_at ASC
-            """
-            cur.execute(query, (user_id,))
-            rows = cur.fetchall()
-            
-            for row in rows:
-                sessions.append({
-                    "session_id": str(row[0]),
-                    "title": row[1][:50] + "..." if len(row[1]) > 50 else row[1], 
-                    "created_at": row[2].isoformat()
-                })
-            
-            sessions.sort(key=lambda x: x['created_at'], reverse=True)
-            
-            cur.close()
-        except Exception as e:
-            print(f"❌ Failed to fetch sessions: {e}")
-        finally:
-            if conn: conn.close()
-        return sessions
-
-    def get_session_history(self, user_id: int, session_id: str) -> list:
-        """
-        Returns the full message history for a specific session ID.
-        """
-        conn = None
+        rows = self.repository.get_messages_by_session(user_id, session_id)
+        
         messages = []
-        try:
-            conn = self._get_db_connection()
-            if not conn: return []
-            
-            cur = conn.cursor()
-            
-            query = """
-                SELECT user_message, ai_message, created_at
-                FROM conversations
-                WHERE user_id = %s AND session_id = %s
-                ORDER BY created_at ASC
-            """
-            cur.execute(query, (user_id, session_id))
-            rows = cur.fetchall()
-            
-            for row in rows:
-                timestamp = row[2].isoformat()
-                
-                messages.append({"role": "user", "content": row[0], "created_at": timestamp})
-                messages.append({"role": "assistant", "content": row[1], "created_at": timestamp})
-            
-            cur.close()
-        except Exception as e:
-            print(f"❌ Failed to fetch history: {e}")
-        finally:
-            if conn: conn.close()
+        for row in rows:
+            if row[0]:
+                messages.append(HumanMessage(content=row[0]))
+            if row[1]:
+                messages.append(AIMessage(content=row[1]))
+        
         return messages
 
-    # --- RAG LOGIC ---
+    def get_session_history(self, user_id: int, session_id: str) -> List[Dict]:
+        """
+        Converts raw DB rows -> Frontend JSON format
+        """
+        rows = self.repository.get_messages_by_session(user_id, session_id)
+        
+        formatted_history = []
+        for row in rows:
+            timestamp = row[2].isoformat() if row[2] else ""
+            formatted_history.append({"role": "user", "content": row[0], "created_at": timestamp})
+            formatted_history.append({"role": "assistant", "content": row[1], "created_at": timestamp})
+            
+        return formatted_history
+
+    def get_user_sessions(self, user_id: int) -> List[Dict]:
+        """
+        Converts raw DB rows -> Sidebar JSON format
+        """
+        rows = self.repository.get_user_sessions_summary(user_id)
+        
+        sessions = []
+        for row in rows:
+            title = row[1]
+            display_title = title[:50] + "..." if len(title) > 50 else title
+            
+            sessions.append({
+                "session_id": str(row[0]),
+                "title": display_title,
+                "created_at": row[2].isoformat()
+            })
+            
+        sessions.sort(key=lambda x: x['created_at'], reverse=True)
+        return sessions
+
     async def answer_question(self, user_id: int, session_id: str, query: str) -> RAGResponse:
-        prompt = query
-        answer = self.llm.invoke(prompt=prompt)
-        answer_text = str(answer)
+        history_messages = self._get_history_objects(user_id, session_id)
 
-        self.save_to_history(user_id, session_id, query, answer_text)
+        prompt_template = ChatPromptTemplate.from_messages([
+            ("system", "You are a helpful assistant."),
+            MessagesPlaceholder(variable_name="history"), 
+            ("human", "{input}")
+        ])
 
-        return RAGResponse(answer=answer_text, model_used=self.llm.__class__.__name__)
+        llm_runnable = self.llm.get_model()
+        chain = prompt_template | llm_runnable | StrOutputParser()
+
+        try:
+            answer_text = await chain.ainvoke({
+                "history": history_messages,
+                "input": query
+            })
+        except Exception:
+            answer_text = chain.invoke({
+                "history": history_messages,
+                "input": query
+            })
+
+        self.repository.save_message(user_id, session_id, query, answer_text)
+
+        model_name = getattr(llm_runnable, "model_name", getattr(llm_runnable, "model", "Unknown Model"))
+
+        return RAGResponse(answer=answer_text, model_used=model_name)
 
 rag_service = RAGService()
