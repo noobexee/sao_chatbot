@@ -1,21 +1,25 @@
-# main.py
-import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from src.api import rag_router, health_router, session_router
 
-# 1. Initialize the FastAPI app
 app = FastAPI(
-    title="Test Server",
-    description="A minimal server to test the FastAPI setup."
+    title="RAG Backend API",
+    description="API for Retrieval Augmented Generation",
+    version="1.0.0",
 )
 
-# 2. Create a test endpoint
-@app.get("/", tags=["Health Check"])
-async def root():
-    """
-    Root endpoint to check if the server is running.
-    """
-    return {"status": "ok", "message": "FastAPI server is running!"}
+app.add_middleware(
+    CORSMiddleware, 
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"], 
+    allow_headers=["*"],
+)
 
-# 3. (Optional) Run the server directly with 'python main.py'
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+@app.get("/", tags=["Health Check"])
+def health_check():
+    return {"status": "running", "message": "RAG Backend is up!"}
+
+app.include_router(rag_router, prefix="/api/v1", tags=["RAG"])
+app.include_router(health_router, prefix="/api/v1/health")
+app.include_router(session_router, prefix="/api/v1", tags=["History"])

@@ -1,1 +1,0 @@
-#Loads your .env file. It uses Pydantic to read your .env variables into a clean, type-safe Python object (settings) that other files can import.
