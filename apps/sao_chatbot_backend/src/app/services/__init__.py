@@ -1,9 +1,8 @@
-from .rag_service import RAGService
-from .embedding_service import EmbeddingService
-from .vector_service import VectorService
+from .rag_service import RAGService, rag_service
+from .ocr_service import TyphoonOCRLoader
 
 __all__ = [
-    "RAGService",
-    "EmbeddingService",
-    "VectorService"
-]
+    "RAGService", 
+    "rag_service", 
+    "TyphoonOCRLoader"
+    ]
