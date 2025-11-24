@@ -14,21 +14,16 @@ def create_user():
         conn = psycopg2.connect(db_url)
         cur = conn.cursor()
         
-        # Define your test user credentials
         TEST_USERNAME = "test_user"
-        TEST_PASSWORD = "password123" # Plain text as requested (Not for production!)
+        TEST_PASSWORD = "password123"
 
-        print(f"👤 Checking for user '{TEST_USERNAME}'...")
-
-        # 1. Check if user already exists
         cur.execute("SELECT id FROM users WHERE username = %s", (TEST_USERNAME,))
         existing_user = cur.fetchone()
 
         if existing_user:
             print(f"⚠️  User '{TEST_USERNAME}' already exists (ID: {existing_user[0]}). Skipping creation.")
         else:
-            # 2. Create the user if they don't exist
-            # RETURNING id allows us to see the new ID immediately
+
             insert_query = """
             INSERT INTO users (username, password) 
             VALUES (%s, %s) 
@@ -36,7 +31,6 @@ def create_user():
             """
             cur.execute(insert_query, (TEST_USERNAME, TEST_PASSWORD))
             
-            # Commit the transaction to save changes
             conn.commit()
             
             new_id = cur.fetchone()[0]

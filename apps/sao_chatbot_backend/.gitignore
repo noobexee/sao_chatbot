@@ -1,36 +1,21 @@
-# --- Python Virtual Environments ---
-# Environments like venv, pyenv, etc.
 .venv/
 venv/
 *env/
 env/
 
-# --- Python Cache & Compiled Files ---
-# Caches
 __pycache__/
 *.py[cod]
 
-# --- Environment & Config ---
-# Never commit your secrets
 .env
 .env.*
 
-# --- Database ---
-# Ignore local database files
-*.sqlite
-*.sqlite3
-*.sqlite-journal
-*.db
 
-# Ignore the built vector store
 /vector_store/
 
-# macOS
 .DS_Store
 .AppleDouble
 .LSOverride
 
-# Windows
 Thumbs.db
 ehthumbs.db
 desktop.ini
@@ -39,3 +24,5 @@ desktop.ini
 .vscode/
 *.swp
 *.swo
+
+data/

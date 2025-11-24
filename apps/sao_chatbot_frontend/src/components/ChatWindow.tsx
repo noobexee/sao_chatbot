@@ -25,7 +25,6 @@ export default function ChatWindow({ initialMessages, sessionId, userId }: ChatW
   const scrollRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  // Scroll to bottom on new message
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
@@ -46,7 +45,6 @@ export default function ChatWindow({ initialMessages, sessionId, userId }: ChatW
     const userText = input;
     setInput(""); 
 
-    // 1. Optimistic Update (Show user message immediately)
     const newMessage: Message = {
       role: "user",
       content: userText,
@@ -56,18 +54,15 @@ export default function ChatWindow({ initialMessages, sessionId, userId }: ChatW
     setIsLoading(true);
 
     try {
-      // 2. Call the new standalone library function
       const responseData = await sendMessage(userId, sessionId, userText);
       
-      // 3. Show AI Response
       const aiMessage: Message = {
         role: "assistant",
-        content: responseData.answer, // The backend returns { answer: "..." }
+        content: responseData.answer,
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, aiMessage]);
       
-      // Refresh to update sidebar title if it's a new chat
       router.refresh();
 
     } catch (error) {
@@ -82,7 +77,6 @@ export default function ChatWindow({ initialMessages, sessionId, userId }: ChatW
 
   return (
     <div className="relative flex h-full flex-col bg-white">
-      {/* CHAT AREA */}
       <div className="flex-1 overflow-y-auto scroll-smooth p-4 pb-24">
         <div className="mx-auto max-w-3xl space-y-6">
           
@@ -94,7 +88,7 @@ export default function ChatWindow({ initialMessages, sessionId, userId }: ChatW
             const isUser = msg.role === "user";
             return (
               <div key={idx} className="flex w-full gap-3 items-start">
-                {/* AVATAR */}
+
                 <div className={`h-8 w-8 shrink-0 flex items-center justify-center rounded-full border border-gray-100 overflow-hidden ${isUser ? "bg-gray-200" : "bg-[#a83b3b] text-white"}`}>
                   {isUser ? (
                     <Image src="/user-placeholder.jpg" alt="User" width={32} height={32} className="object-cover" />
@@ -103,7 +97,6 @@ export default function ChatWindow({ initialMessages, sessionId, userId }: ChatW
                   )}
                 </div>
 
-                {/* MESSAGE CONTENT */}
                 <div className="flex flex-col w-full min-w-0">
                   <div className="flex items-baseline gap-2 mb-1">
                     <span className="font-semibold text-sm">{isUser ? "คุณ" : "SAO bot"}</span>
@@ -122,7 +115,6 @@ export default function ChatWindow({ initialMessages, sessionId, userId }: ChatW
             );
           })}
 
-          {/* Loading State */}
           {isLoading && (
             <div className="flex w-full gap-3 items-start opacity-70">
               <div className="h-8 w-8 shrink-0 flex items-center justify-center rounded-full bg-[#a83b3b] text-white text-xs font-semibold">SAO</div>
@@ -141,7 +133,6 @@ export default function ChatWindow({ initialMessages, sessionId, userId }: ChatW
         </div>
       </div>
 
-      {/* INPUT AREA */}
       <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-white via-white to-transparent pt-10 pb-6">
         <div className="mx-auto max-w-3xl px-4">
           <form 
