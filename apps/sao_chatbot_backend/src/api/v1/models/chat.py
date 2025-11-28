@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 
 class ChatRequest(BaseModel):
     """
@@ -33,3 +33,7 @@ class HistoryResponse(BaseModel):
     """
     session_id: str
     messages: List[HistoryMessage]
+
+class UpdateSessionRequest(BaseModel):
+    title: Optional[str] = None
+    is_pinned: Optional[bool] = None

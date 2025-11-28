@@ -1,4 +1,4 @@
-from typing import List, Any, Dict, Set
+from typing import List, Any, Dict, Set, Optional
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
@@ -48,6 +48,7 @@ class RAGService:
         for i, doc in enumerate(retrieved_docs):
             print(f"--- Chunk {i+1} (Page {doc.metadata.get('page')}) ---")
             print(doc.page_content[:200].replace('\n', ' '))
+        
         prompt_template = ChatPromptTemplate.from_messages([
             ("system", """คุณเป็นผู้ช่วยทางกฎหมายที่เชี่ยวชาญระเบียบสำนักงานตรวจเงินแผ่นดิน
             จงตอบคำถามโดยใช้ข้อมูลจาก Context ที่ให้มาเท่านั้น
@@ -110,17 +111,38 @@ class RAGService:
         return formatted_history
 
     def get_user_sessions(self, user_id: int) -> List[Dict]:
-        rows = self.repository.get_user_sessions_summary(user_id)
-        sessions = []
-        for row in rows:
-            title = row[1]
-            display_title = title[:50] + "..." if len(title) > 50 else title
-            sessions.append({
-                "session_id": str(row[0]),
-                "title": display_title,
-                "created_at": row[2].isoformat()
-            })
-        sessions.sort(key=lambda x: x['created_at'], reverse=True)
-        return sessions
+        # This calls the updated repository method that returns {session_id, title, is_pinned...}
+        return self.repository.get_user_sessions_summary(user_id)
+
+    # --- DELETE METHOD ---
+    def delete_session_history(self, user_id: int, session_id: str) -> Dict[str, Any]:
+        """
+        Deletes a specific chat session.
+        """
+        try:
+            success = self.repository.delete_session(user_id, session_id)
+            if success:
+                return {"status": "success", "message": f"Session {session_id} deleted successfully."}
+            else:
+                return {"status": "error", "message": "Failed to delete session from database."}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    # --- UPDATE METHOD (Rename / Pin) ---
+    def update_session(self, user_id: int, session_id: str, title: Optional[str] = None, is_pinned: Optional[bool] = None) -> Dict[str, Any]:
+        """
+        Updates session metadata (title, pinned status).
+        """
+        try:
+            success = self.repository.update_session_metadata(user_id, session_id, title, is_pinned)
+            
+            if success:
+                return {"status": "success", "message": "Session updated successfully."}
+            else:
+                return {"status": "error", "message": "Failed to update session in database."}
+        except AttributeError:
+             return {"status": "error", "message": "Repository method 'update_session_metadata' not found."}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
 
 rag_service = RAGService()

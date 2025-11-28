@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
+from .models.chat import UpdateSessionRequest
 from src.api.v1.models import APIResponse
 from src.app.services.rag_service import rag_service
 
@@ -41,3 +42,43 @@ def get_chat_history(user_id: int, session_id: str):
             message=f"Failed to fetch history: {str(e)}",
             data=None
         )
+    
+@router.delete("/sessions/{user_id}/{session_id}", response_model=APIResponse)
+def delete_session(user_id: int, session_id: str):
+    try:
+        result = rag_service.delete_session_history(user_id, session_id)
+        
+        if result.get("status") == "error":
+             return APIResponse(
+                success=False,
+                message=result.get("message", "Unknown error"),
+                data=None
+            )
+            
+        return APIResponse(
+            success=True,
+            message=result.get("message", "Session deleted successfully"),
+            data=None
+        )
+    except Exception as e:
+        return APIResponse(
+            success=False,
+            message=f"Failed to delete session: {str(e)}",
+            data=None
+        )
+@router.patch("/sessions/{user_id}/{session_id}", response_model=APIResponse)
+def update_session(user_id: int, session_id: str, payload: UpdateSessionRequest):
+    try:
+        result = rag_service.update_session(
+            user_id=user_id, 
+            session_id=session_id, 
+            title=payload.title, 
+            is_pinned=payload.is_pinned
+        )
+        
+        if result["status"] == "error":
+             return APIResponse(success=False, message=result["message"], data=None)
+            
+        return APIResponse(success=True, message="Updated successfully", data=None)
+    except Exception as e:
+        return APIResponse(success=False, message=str(e), data=None)

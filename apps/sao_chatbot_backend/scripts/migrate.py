@@ -12,7 +12,7 @@ def run_migrations():
         return
 
     current_script_dir = os.path.dirname(os.path.abspath(__file__))
-    migrations_dir = os.path.join(current_script_dir, '../db/migrations')
+    migrations_dir = os.path.join(current_script_dir, '../src/db/migrations')
 
     if not os.path.exists(migrations_dir):
         print(f"Error: Migrations directory not found at: {migrations_dir}")

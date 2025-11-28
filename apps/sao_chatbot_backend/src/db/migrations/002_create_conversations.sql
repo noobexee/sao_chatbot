@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS conversations (
     ai_message TEXT NOT NULL,
     
     retrieval_context JSONB DEFAULT '[]',
-    
+    custom_title TEXT,
+    is_pinned BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
