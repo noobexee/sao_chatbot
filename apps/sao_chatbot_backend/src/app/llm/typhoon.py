@@ -1,8 +1,9 @@
 import os
-from src.app.services.llm_base_service import BaseLLM
 from langchain_openai import ChatOpenAI
 
-class TyphoonService(BaseLLM):
+from src.app.llm.base import BaseLLM
+
+class TyphoonLLM(BaseLLM):
     def __init__(self, model_name: str | None = None):  
         self._llm_instance = ChatOpenAI(
             base_url=os.getenv("TYPHOON_API_BASE_URL", "https://api.opentyphoon.ai/v1"),

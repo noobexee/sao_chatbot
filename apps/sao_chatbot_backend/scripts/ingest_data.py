@@ -9,7 +9,7 @@ from src.db.vector_store import get_vectorstore
 CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CURRENT_DIR.parent
 sys.path.append(str(PROJECT_ROOT))
-DATA_PATH = os.path.join(PROJECT_ROOT, "data")
+DATA_PATH = os.path.join(PROJECT_ROOT, "data/documents")
 
 def ingest_data():
 

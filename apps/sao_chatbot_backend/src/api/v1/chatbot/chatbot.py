@@ -1,14 +1,14 @@
 from fastapi import APIRouter, HTTPException
-from src.api.v1.models.chat import ChatRequest
+from src.api.v1.models.chatbot import ChatRequest
 from src.api.v1.models import APIResponse
-from src.app.services.rag_service import rag_service
+from src.app.chatbot.chatbot import chatbot
 
 router = APIRouter()
 
 @router.post("/query", response_model=APIResponse)
 async def run_rag(request: ChatRequest):
     try:
-        answer_response = await rag_service.answer_question(
+        answer_response = await chatbot.answer_question(
             user_id=request.user_id,
             session_id=request.session_id,
             query=request.query

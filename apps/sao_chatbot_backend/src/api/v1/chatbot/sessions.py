@@ -1,14 +1,13 @@
 from fastapi import APIRouter, HTTPException
-from typing import List
-from .models.chat import UpdateSessionRequest
+from src.api.v1.models.chatbot import UpdateSessionRequest
 from src.api.v1.models import APIResponse
-from src.app.services.rag_service import rag_service
+from src.app.chatbot.chatbot import chatbot
 
 router = APIRouter()
 @router.get("/sessions/{user_id}", response_model=APIResponse)
 def get_all_sessions(user_id: int):
     try:
-        sessions = rag_service.get_user_sessions(user_id)
+        sessions = chatbot.get_user_sessions(user_id)
         return APIResponse(
             success=True,
             message="Sessions retrieved successfully",
@@ -24,7 +23,7 @@ def get_all_sessions(user_id: int):
 @router.get("/history/{user_id}/{session_id}", response_model=APIResponse)
 def get_chat_history(user_id: int, session_id: str):
     try:
-        messages = rag_service.get_session_history(user_id, session_id)
+        messages = chatbot.get_session_history(user_id, session_id)
         
         history_data = {
             "session_id": session_id,
@@ -46,7 +45,7 @@ def get_chat_history(user_id: int, session_id: str):
 @router.delete("/sessions/{user_id}/{session_id}", response_model=APIResponse)
 def delete_session(user_id: int, session_id: str):
     try:
-        result = rag_service.delete_session_history(user_id, session_id)
+        result = chatbot.delete_session_history(user_id, session_id)
         
         if result.get("status") == "error":
              return APIResponse(
@@ -69,7 +68,7 @@ def delete_session(user_id: int, session_id: str):
 @router.patch("/sessions/{user_id}/{session_id}", response_model=APIResponse)
 def update_session(user_id: int, session_id: str, payload: UpdateSessionRequest):
     try:
-        result = rag_service.update_session(
+        result = chatbot.update_session(
             user_id=user_id, 
             session_id=session_id, 
             title=payload.title, 

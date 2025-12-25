@@ -1,10 +1,8 @@
 from src.config import settings
-from src.app.services.llm_base_service import BaseLLM
-
-
+from src.app.llm.base import BaseLLM
 from langchain.chat_models import init_chat_model
 
-class GeminiService(BaseLLM):
+class GeminiLLM(BaseLLM):
     def __init__(self, model_name="gemini-2.5-flash", temperature=0.7):
         self.llm = init_chat_model(
             model_name,

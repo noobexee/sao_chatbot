@@ -1,10 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.api import rag_router, health_router, session_router
+from src.api.v1.router import api_router 
 
 app = FastAPI(
     title="RAG Backend API",
-    description="API for Retrieval Augmented Generation",
+    description="API for Retrieval Augmented Generation and Audit Logging",
     version="1.0.0",
 )
 
@@ -16,10 +16,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/", tags=["Health Check"])
-def health_check():
+@app.get("/", tags=["System"])
+def root():
     return {"status": "running", "message": "RAG Backend is up!"}
 
-app.include_router(rag_router, prefix="/api/v1", tags=["RAG"])
-app.include_router(health_router, prefix="/api/v1/health")
-app.include_router(session_router, prefix="/api/v1", tags=["History"])
+app.include_router(api_router, prefix="/api/v1")
