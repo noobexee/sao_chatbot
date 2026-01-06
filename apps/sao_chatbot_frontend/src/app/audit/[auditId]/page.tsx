@@ -7,6 +7,20 @@ import { useAudit } from "../audit-context";
 // --- Types ---
 type StepStatus = "neutral" | "pending" | "success" | "fail";
 
+interface Person {
+  name: string;
+  role: string;
+}
+
+// Editable Step 4 Details
+interface Step4Details {
+  entity: string | null;
+  behavior: string | null;
+  official: string | null;
+  date: string | null;
+  location: string | null;
+}
+
 interface AuditStep {
   id: number;
   label: string;
@@ -18,7 +32,9 @@ interface AuditStep {
   ocrResult?: {
     status: "success" | "fail";
     title: string;
-    reason: string;
+    reason?: string;
+    people?: Person[];
+    details?: Step4Details;
   };
 }
 
@@ -71,33 +87,28 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
   const { currentFile } = useAudit();
   const [showChecklist, setShowChecklist] = useState(false);
   const [steps, setSteps] = useState<AuditStep[]>(initialSteps);
-  
-  // CHANGED: Now using an array to support multiple open steps
   const [expandedStepIds, setExpandedStepIds] = useState<number[]>([]);
 
-  // Toggle single step
+  // State to track which field is currently being edited (e.g., "date", "location")
+  const [editingField, setEditingField] = useState<keyof Step4Details | null>(null);
+  // Temporary state for the input value while editing
+  const [tempEditValue, setTempEditValue] = useState("");
+
   const toggleExpand = (id: number) => {
     setExpandedStepIds(prev => 
       prev.includes(id) 
-        ? prev.filter(stepId => stepId !== id) // Close if open
-        : [...prev, id] // Open if closed
+        ? prev.filter(stepId => stepId !== id)
+        : [...prev, id]
     );
   };
 
-  // Toggle All Steps
   const handleToggleAll = () => {
-    // Check if all are currently open
     const allIds = steps.map(s => s.id);
     const isAllOpen = expandedStepIds.length === allIds.length;
-
-    if (isAllOpen) {
-      setExpandedStepIds([]); // Collapse all
-    } else {
-      setExpandedStepIds(allIds); // Expand all
-    }
+    if (isAllOpen) setExpandedStepIds([]);
+    else setExpandedStepIds(allIds);
   };
 
-  // --- Logic for Manual Selection ---
   const handleOptionSelect = (stepId: number, optionLabel: string, resultStatus: "success" | "fail") => {
     setSteps(prevSteps => 
       prevSteps.map(step => {
@@ -109,63 +120,99 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
     );
   };
 
-  // --- Logic for "One Go" Analysis ---
-  const handleStartAnalysis = () => {
+  const handleStartAnalysis = async () => {
+    if (!currentFile) {
+        alert("No file loaded!");
+        return;
+    }
+
     setShowChecklist(true);
-    
-    // Set auto steps to processing
     setSteps(prev => prev.map(step => 
       (step.id === 4 || step.id === 6) ? { ...step, isProcessing: true } : step
     ));
 
-    // Simulate API Call
-    setTimeout(() => {
-        finishAnalysis();
-    }, 2500);
+    try {
+        const formData = new FormData();
+        formData.append("file", currentFile.fileObj);
+
+        // Ensure this matches your backend URL/Port
+        const response = await fetch("http://localhost:8080/analyze", {
+            method: "POST",
+            body: formData,
+        });
+
+        const result = await response.json();
+
+        if (result.status === "success") {
+            const { step4, step6 } = result.data;
+
+            setSteps(prev => prev.map(step => {
+                if (step.id === 4) {
+                    return {
+                        ...step,
+                        isProcessing: false,
+                        status: step4.status,
+                        ocrResult: step4
+                    };
+                }
+                if (step.id === 6) {
+                    return {
+                        ...step,
+                        isProcessing: false,
+                        status: step6.status,
+                        ocrResult: {
+                            status: step6.status,
+                            title: step6.title,
+                            reason: step6.reason, 
+                            people: step6.people
+                        }
+                    };
+                }
+                return step;
+            }));
+
+            setExpandedStepIds(prev => [...new Set([...prev, 4, 6])]);
+        } else {
+            console.error("Backend Error:", result.message);
+            setSteps(prev => prev.map(s => ({...s, isProcessing: false})));
+            alert("Backend returned an error. Check console.");
+        }
+
+    } catch (error) {
+        console.error("Connection Failed:", error);
+        alert("Backend Connection Failed (Port 8080). Make sure python backend is running.");
+        setSteps(prev => prev.map(s => ({...s, isProcessing: false})));
+    }
   };
 
-  const finishAnalysis = () => {
-    // Mock Result for Step 4
-    const step4Success = Math.random() > 0.3;
-    const step4Result = {
-        status: step4Success ? "success" : "fail",
-        title: step4Success 
-            ? "เป็นเรื่องที่ระบุรายละเอียดเพียงพอที่จะตรวจสอบได้"
-            : "เป็นเรื่องที่ระบุรายละเอียดไม่เพียงพอที่จะตรวจสอบได้",
-        reason: step4Success 
-            ? "เนื่องจากมีการระบุชื่อผู้ถูกร้องเรียน (นายฉลาด หลักแหลม) ตำแหน่ง และพฤติการณ์การกระทำผิด (การนำรถหลวงไปใช้ส่วนตัว) รวมถึงระบุวันเวลาที่เกิดเหตุ (1-3 กันยายน 2566) ไว้อย่างชัดเจนตามระเบียบข้อ 18(3)"
-            : "เนื่องจากขาดข้อมูลระบุวันเวลาที่ชัดเจนของการกระทำความผิด และไม่ได้ระบุสถานที่เกิดเหตุ ทำให้ไม่สามารถดำเนินการตรวจสอบข้อเท็จจริงต่อได้"
-    } as const;
+  // --- EDITING LOGIC ---
+  const startEditing = (key: keyof Step4Details, currentValue: string | null) => {
+    setEditingField(key);
+    setTempEditValue(currentValue || "");
+  };
 
-    // Mock Result for Step 6
-    const step6Result = {
-        status: "success",
-        title: "รายละเอียดของผู้ร้องเรียนครบถ้วน",
-        reason: "มีการระบุชื่อ นามสกุล และที่อยู่ของผู้ร้องเรียน (นายรู้รักษ์ เงินแผ่นดิน) ชัดเจน"
-    } as const;
-
+  const saveEdit = (key: keyof Step4Details) => {
     setSteps(prev => prev.map(step => {
-        if (step.id === 4) {
+        if (step.id === 4 && step.ocrResult && step.ocrResult.details) {
             return {
                 ...step,
-                isProcessing: false,
-                status: step4Result.status,
-                ocrResult: step4Result
-            };
-        }
-        if (step.id === 6) {
-            return {
-                ...step,
-                isProcessing: false,
-                status: step6Result.status as "success" | "fail",
-                ocrResult: step6Result
+                ocrResult: {
+                    ...step.ocrResult,
+                    details: {
+                        ...step.ocrResult.details,
+                        [key]: tempEditValue
+                    }
+                }
             };
         }
         return step;
     }));
+    setEditingField(null);
+  };
 
-    // Auto-expand relevant steps to show results
-    setExpandedStepIds(prev => [...new Set([...prev, 4, 6])]);
+  const cancelEdit = () => {
+    setEditingField(null);
+    setTempEditValue("");
   };
 
   const getStatusClasses = (status: StepStatus) => {
@@ -177,10 +224,69 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
     }
   };
 
+  // Helper to render Step 4 items with EDIT functionality
+  const renderStep4Item = (fieldKey: keyof Step4Details, label: string, value: string | null, required: boolean) => {
+    const isEditing = editingField === fieldKey;
+
+    return (
+        <div className="flex items-start justify-between text-sm py-2 border-b border-gray-100 last:border-0 group/item">
+            <div className="flex flex-col flex-1 mr-2">
+                <span className="text-gray-600 font-medium mb-1">
+                    {label} {required && <span className="text-red-500">*</span>}
+                </span>
+                
+                {isEditing ? (
+                    // Edit Mode: Input Field
+                    <div className="flex gap-2 mt-1">
+                        <input 
+                            type="text" 
+                            className="border border-blue-300 rounded px-2 py-1 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-100"
+                            value={tempEditValue}
+                            onChange={(e) => setTempEditValue(e.target.value)}
+                            autoFocus
+                        />
+                        <button onClick={() => saveEdit(fieldKey)} className="text-green-600 hover:text-green-800 font-bold px-1">✓</button>
+                        <button onClick={cancelEdit} className="text-red-500 hover:text-red-700 font-bold px-1">✕</button>
+                    </div>
+                ) : (
+                    // View Mode: Text Display
+                    <div className="flex items-center gap-2 group-hover/item:bg-gray-50 rounded px-1 -ml-1 transition-colors">
+                        {value ? (
+                            <span className="text-gray-800 font-bold">{value}</span>
+                        ) : (
+                            <span className="text-gray-400 italic">ไม่พบข้อมูล</span>
+                        )}
+                        
+                        {/* Edit Pencil Icon (Visible on Hover) */}
+                        <button 
+                            onClick={() => startEditing(fieldKey, value)}
+                            className="opacity-0 group-hover/item:opacity-100 text-blue-400 hover:text-blue-600 transition-opacity p-1"
+                            title="Edit"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                        </button>
+                    </div>
+                )}
+            </div>
+            
+            {/* Valid/Invalid Status Icon */}
+            {!isEditing && (
+                <div className="ml-2 flex items-center h-full pt-1">
+                    {value ? (
+                        <span className="text-green-600 font-bold">✓</span>
+                    ) : (
+                        required ? <span className="text-red-500 font-bold">✕</span> : <span className="text-gray-300">-</span>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+  };
+
   return (
     <div className="flex h-full w-full flex-row overflow-hidden bg-[#f9fafb]">
       
-      {/* LEFT: Document Viewer */}
+      {/* LEFT PANEL */}
       <div className="flex-1 overflow-y-auto p-8 flex justify-center bg-[#f0f2f5]">
         <div className="h-full w-full max-w-[800px] min-h-[1000px] bg-white shadow-sm border border-gray-200 relative">
           {currentFile ? (
@@ -189,7 +295,11 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
              ) : currentFile.type === 'image' ? (
               <img src={currentFile.previewUrl} alt="Doc" className="w-full h-full object-contain" />
              ) : (
-              <div className="flex items-center justify-center h-full text-gray-500">{currentFile.name}</div>
+              <div className="flex flex-col justify-center items-center h-full text-gray-500 gap-2">
+                  <div className="text-4xl">📄</div>
+                  <div>{currentFile.name}</div>
+                  <div className="text-sm">Preview not supported</div>
+              </div>
              )
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 p-10">
@@ -199,10 +309,9 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
         </div>
       </div>
 
-      {/* RIGHT: Tools */}
+      {/* RIGHT PANEL */}
       <div className="w-[500px] shrink-0 flex flex-col gap-6 border-l border-gray-200 bg-white p-6 overflow-y-auto">
         
-        {/* START SCREEN */}
         {!showChecklist ? (
             <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-bold text-[#1e293b] mb-2">เริ่มต้นการตรวจสอบด้วย AI</h2>
@@ -217,12 +326,11 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
               </button>
             </div>
         ) : (
-            /* CHECKLIST SCREEN */
             <div className="flex h-full flex-col bg-white">
                 <div className="space-y-3 pb-4">
                     {steps.map((step) => (
                     <div key={step.id}>
-                        {/* Step Card */}
+                        {/* Step Header */}
                         <div 
                           className={`
                             flex items-center justify-between rounded-md border p-4 shadow-sm cursor-pointer transition-all duration-300
@@ -234,33 +342,31 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
                              <div className="flex items-center gap-2">
                                 <span className="text-sm font-medium">{step.label}</span>
                              </div>
-
                              {step.isProcessing && (
                                 <span className="inline-flex items-center gap-1 mt-1 text-xs text-blue-600 font-semibold animate-pulse">
-                                    <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                    Processing OCR...
+                                    Processing...
                                 </span>
                              )}
-                             {step.selectedOption && !expandedStepIds.includes(step.id) && (
-                               <div className="mt-1 text-xs font-bold opacity-80">Selected: {step.selectedOption}</div>
-                             )}
-                             {step.ocrResult && !expandedStepIds.includes(step.id) && !step.isProcessing && (
+                             
+                             {!expandedStepIds.includes(step.id) && !step.isProcessing && step.status !== 'neutral' && (
                                 <div className={`mt-1 text-xs font-bold ${step.status === 'success' ? 'text-green-700' : 'text-red-700'}`}>
-                                    Result: {step.status === 'success' ? 'Pass' : 'Fail'}
+                                    {step.type === 'manual' && step.selectedOption && (
+                                        <span>Selected: {step.selectedOption}</span>
+                                    )}
+                                    {step.id === 4 && (step.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
                                 </div>
                              )}
                           </div>
-                          
                           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-200 ${expandedStepIds.includes(step.id) ? 'rotate-180' : ''} opacity-50`}>
                             <polyline points="6 9 12 15 18 9"></polyline>
                           </svg>
                         </div>
 
-                        {/* EXPANDED AREA */}
+                        {/* EXPANDED CONTENT */}
                         {expandedStepIds.includes(step.id) && (
                            <div className="mt-2 ml-4 p-4 border-l-2 border-gray-200 bg-gray-50 rounded-r-md">
                               
-                              {/* A. Manual Input */}
+                              {/* MANUAL STEPS (3, 5) */}
                               {step.type === "manual" && step.options && (
                                  <div className="space-y-2">
                                     <p className="text-xs font-bold text-gray-500 mb-2 uppercase">Manual Verification</p>
@@ -279,28 +385,51 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
                                  </div>
                               )}
 
-                              {/* B. AI Result */}
-                              {step.type === "auto" && (
-                                <>
-                                    {step.isProcessing ? (
-                                        <div className="flex items-center gap-3 text-sm text-gray-500 py-4">
-                                            <svg className="animate-spin h-5 w-5 text-blue-500" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                            Analyzing document content...
-                                        </div>
-                                    ) : step.ocrResult ? (
-                                        <div className={`p-4 rounded-lg border ${step.status === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                                            <p className={`font-bold text-sm mb-2 ${step.status === 'success' ? 'text-green-800' : 'text-red-800'}`}>
-                                                {step.ocrResult.title}
-                                            </p>
-                                            <p className="text-sm text-gray-700 leading-relaxed">
-                                                <span className="font-semibold">เพราะ: </span>
-                                                {step.ocrResult.reason}
-                                            </p>
+                              {/* STEP 4: EDITABLE LIST */}
+                              {step.id === 4 && step.ocrResult && step.ocrResult.details && (
+                                <div className="space-y-2 bg-white p-2 rounded border border-gray-100">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <p className="text-xs font-bold text-gray-500 uppercase">ตรวจสอบองค์ประกอบ (Required*)</p>
+                                    </div>
+                                    {renderStep4Item("official", "เจ้าหน้าที่ผู้ถูกร้อง", step.ocrResult.details.official, true)}
+                                    {renderStep4Item("entity", "ชื่อหน่วยรับตรวจ", step.ocrResult.details.entity, true)}
+                                    {renderStep4Item("behavior", "พฤติการณ์", step.ocrResult.details.behavior, true)}
+                                    <p className="text-xs font-bold text-gray-500 uppercase mt-4 mb-2">ข้อมูลเพิ่มเติม (Optional)</p>
+                                    {renderStep4Item("date", "วันเวลา", step.ocrResult.details.date, false)}
+                                    {renderStep4Item("location", "สถานที่", step.ocrResult.details.location, false)}
+                                </div>
+                              )}
+
+                              {/* STEP 6: People List */}
+                              {step.id === 6 && step.ocrResult && (
+                                <div className="space-y-3">
+                                    {step.ocrResult.people && step.ocrResult.people.length > 0 ? (
+                                        <div className="bg-white border border-gray-200 rounded-md overflow-hidden">
+                                            <div className="bg-gray-100 px-3 py-2 text-xs font-bold text-gray-500 uppercase flex justify-between">
+                                                <span>Detected People</span>
+                                                <span className="bg-gray-200 text-gray-600 px-1.5 rounded-full">{step.ocrResult.people.length}</span>
+                                            </div>
+                                            <div className="divide-y divide-gray-100 max-h-60 overflow-y-auto">
+                                                {step.ocrResult.people.map((person, idx) => (
+                                                    <div key={idx} className="px-3 py-2 text-sm flex items-center justify-between hover:bg-gray-50">
+                                                        <span className="font-medium text-gray-800 truncate max-w-[180px]">{person.name}</span>
+                                                        <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${
+                                                            person.role === 'ผู้ร้องเรียน' ? 'bg-blue-100 text-blue-700' :
+                                                            person.role === 'ผู้ถูกร้องเรียน' ? 'bg-red-100 text-red-700' :
+                                                            'bg-gray-100 text-gray-600'
+                                                        }`}>
+                                                            {person.role}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
                                     ) : (
-                                        <p className="text-sm text-gray-400 italic">Waiting to start analysis...</p>
+                                        <div className="text-sm text-gray-500 italic p-2 text-center">
+                                            ไม่พบรายชื่อบุคคลในเอกสาร
+                                        </div>
                                     )}
-                                </>
+                                </div>
                               )}
 
                            </div>
@@ -309,7 +438,6 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
                     ))}
                 </div>
 
-                {/* EXPAND ALL BUTTON */}
                 <div className="pt-4 mt-auto border-t border-gray-100">
                     <button 
                         onClick={handleToggleAll}
@@ -321,28 +449,27 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
             </div>
         )}
 
-        {/* MINI CHAT (Always Visible) */}
-        {!showChecklist && (
-             <div className="flex-1 overflow-hidden mt-auto">
-                 <div className="flex flex-col rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden min-h-[400px]">
-                    <div className="flex flex-col items-center justify-center pt-10 pb-6">
-                        <div className="mb-4 relative h-24 w-24">
-                            <Image src="/logo.png" alt="SAO Logo" fill className="object-contain" />
-                        </div>
-                        <h3 className="text-base font-bold text-[#1e293b]">SAO chatbot as assistance</h3>
+        {/* CHAT INTERFACE */}
+         <div className="flex-1 overflow-hidden mt-auto pt-6">
+             <div className="flex flex-col rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden min-h-[300px]">
+                <div className="flex flex-col items-center justify-center pt-6 pb-4">
+                    <div className="mb-2 relative h-16 w-16">
+                        <Image src="/logo.png" alt="SAO Logo" fill className="object-contain" />
                     </div>
-                    <div className="flex-1 bg-white p-4"></div>
-                    <div className="p-4 pt-0 pb-6">
-                        <div className="relative flex items-center rounded-full border border-gray-200 bg-white px-2 py-2 shadow-sm focus-within:ring-1 focus-within:ring-gray-200">
-                            <input type="text" placeholder="ส่งข้อความให้ SAO bot" className="flex-1 border-none bg-transparent px-4 text-sm outline-none placeholder:text-gray-400" />
-                            <button className="flex h-8 w-8 items-center justify-center rounded-full bg-[#a83b3b] text-white hover:bg-[#8f3232] transition-colors shrink-0">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-                            </button>
-                        </div>
+                    <h3 className="text-sm font-bold text-[#1e293b]">SAO chatbot as assistance</h3>
+                </div>
+                <div className="flex-1 bg-white p-4"></div>
+                <div className="p-4 pt-0 pb-6">
+                    <div className="relative flex items-center rounded-full border border-gray-200 bg-white px-2 py-2 shadow-sm focus-within:ring-1 focus-within:ring-gray-200">
+                        <input type="text" placeholder="ส่งข้อความให้ SAO bot" className="flex-1 border-none bg-transparent px-4 text-sm outline-none placeholder:text-gray-400" />
+                        <button className="flex h-8 w-8 items-center justify-center rounded-full bg-[#a83b3b] text-white hover:bg-[#8f3232] transition-colors shrink-0">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                        </button>
                     </div>
                 </div>
             </div>
-        )}
+        </div>
+
       </div>
     </div>
   );
