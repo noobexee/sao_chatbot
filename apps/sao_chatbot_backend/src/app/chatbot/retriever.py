@@ -6,12 +6,12 @@ from langchain_huggingface import HuggingFaceEmbeddings
 
 class Retriever:
     def __init__(self, uri: str, username: str, password: str):
-        self.graph = Neo4jGraph(
-            url=uri,
-            username=username,
-            password=password,
-            refresh_schema=False 
-        )
+        #self.graph = Neo4jGraph(
+        #    url=uri,
+        #    username=username,
+        #    password=password,
+        #    refresh_schema=False 
+        #)
         
         print("📥 Loading Embedding Model (BAAI/bge-m3)...")
         self.embeddings = HuggingFaceEmbeddings(

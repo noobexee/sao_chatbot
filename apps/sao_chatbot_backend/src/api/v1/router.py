@@ -4,6 +4,6 @@ from src.api.v1.chatbot.router import chatbot_router
 
 api_router = APIRouter()
 
-api_router.include_router(chatbot_router, prefix="/chatbot", tags=["Chatbot"])
+#api_router.include_router(chatbot_router, prefix="/chatbot", tags=["Chatbot"])
 
 # api_router.include_router(audit_router, prefix="/audit", tags=["Audit"])

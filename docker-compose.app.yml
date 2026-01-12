@@ -9,8 +9,6 @@ services:
     env_file:
       - ./apps/sao_chatbot_backend/.env
     environment:
-      REDIS_HOST: redis
-      REDIS_PORT: ${REDIS_PORT}
       SQL_DATABASE_URL: ${SQL_DATABASE_URL}
     depends_on:
       - redis
@@ -32,20 +30,6 @@ services:
       - backend
     networks:
       - app-net
-
-  redis:
-    image: redis:alpine
-    restart: unless-stopped
-    ports:
-      - "${REDIS_PORT}:${REDIS_PORT}"
-    volumes:
-      - redis-data:/data
-    networks:
-      - app-net
-
-volumes:
-  redis-data:
-    driver: local
 
 networks:
   app-net:
