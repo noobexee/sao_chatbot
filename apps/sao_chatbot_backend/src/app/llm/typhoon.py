@@ -9,7 +9,8 @@ class TyphoonLLM(BaseLLM):
             base_url=os.getenv("TYPHOON_API_BASE_URL", "https://api.opentyphoon.ai/v1"),
             api_key=os.getenv("TYPHOON_API_KEY", ""),
             model=model_name or os.getenv("TYPHOON_MODEL", "typhoon-v2.1-12b-instruct"),
-            temperature=0.7
+            temperature=0.7,
+            max_tokens=4096
         )
 
     def get_model(self):

@@ -7,10 +7,10 @@ def reset_weaviate():
         grpc_port=50051
     )
     
-    print("Deleting 'RAG_Documents' collection...")
-    client.collections.delete("RAG_Documents")
+    print("Deleting 'LegalDocument' collection...")
+    client.collections.delete("LegalDocument")
     
-    print("Database is clean. You can now run ingest.py.")
+    print("Database is clean.")
     client.close()
 
 if __name__ == "__main__":
