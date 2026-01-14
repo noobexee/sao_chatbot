@@ -6,6 +6,7 @@ import { useAudit } from "../audit-context";
 
 // --- Types ---
 type StepStatus = "neutral" | "pending" | "success" | "fail";
+type FeedbackType = "up" | "down" | null;
 
 interface Person {
   name: string;
@@ -29,6 +30,10 @@ interface AuditStep {
   options?: { label: string; value: "success" | "fail" }[];
   selectedOption?: string | null;
   isProcessing?: boolean;
+  
+  // Feedback field
+  feedback?: FeedbackType;
+
   ocrResult?: {
     status: "success" | "fail";
     title: string;
@@ -46,7 +51,7 @@ const initialSteps: AuditStep[] = [
     id: 3,
     label: "3. เป็นเรื่องที่เกิดขึ้นมาไม่เกิน 5 ปี นับตั้งแต่วันที่เกิดเหตุจนถึงวันที่สตง.ได้รับเรื่อง",
     type: "manual",
-    status: "pending", // Yellow
+    status: "pending", 
     options: [
       { label: "เกิน", value: "fail" },
       { label: "ไม่เกิน", value: "success" },
@@ -65,7 +70,7 @@ const initialSteps: AuditStep[] = [
     id: 5,
     label: "5. เป็นเรื่องที่ผู้ว่าการหรือผู้ที่ผู้ว่าการมอบหมายให้ตรวจสอบแล้วยังไม่เคยแจ้งผลการตรวจสอบ",
     type: "manual",
-    status: "pending", // Yellow
+    status: "pending",
     options: [
       { label: "เคย", value: "fail" },
       { label: "ไม่เคย", value: "success" },
@@ -76,7 +81,7 @@ const initialSteps: AuditStep[] = [
     id: 6, 
     label: "6. รายละเอียดของผู้ร้องเรียน", 
     type: "auto", 
-    status: "neutral",
+    status: "neutral", 
     isProcessing: false,
   },
   { id: 7, label: "7. ไม่เป็นเรื่องร้องเรียนที่อยู่ระหว่างการดำเนินการของหน่วยงานอื่น", type: "auto", status: "neutral" },
@@ -89,9 +94,8 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
   const [steps, setSteps] = useState<AuditStep[]>(initialSteps);
   const [expandedStepIds, setExpandedStepIds] = useState<number[]>([]);
 
-  // State to track which field is currently being edited (e.g., "date", "location")
+  // Editing States
   const [editingField, setEditingField] = useState<keyof Step4Details | null>(null);
-  // Temporary state for the input value while editing
   const [tempEditValue, setTempEditValue] = useState("");
 
   const toggleExpand = (id: number) => {
@@ -120,6 +124,18 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
     );
   };
 
+  // --- HANDLE FEEDBACK (UPDATED) ---
+  const handleFeedback = (stepId: number, type: FeedbackType) => {
+    // Just update state, no console.log
+    setSteps(prev => prev.map(step => {
+        if (step.id === stepId) {
+            const newFeedback = step.feedback === type ? null : type;
+            return { ...step, feedback: newFeedback };
+        }
+        return step;
+    }));
+  };
+
   const handleStartAnalysis = async () => {
     if (!currentFile) {
         alert("No file loaded!");
@@ -135,7 +151,6 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
         const formData = new FormData();
         formData.append("file", currentFile.fileObj);
 
-        // Ensure this matches your backend URL/Port
         const response = await fetch("http://localhost:8080/analyze", {
             method: "POST",
             body: formData,
@@ -173,15 +188,15 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
 
             setExpandedStepIds(prev => [...new Set([...prev, 4, 6])]);
         } else {
-            console.error("Backend Error:", result.message);
+            // Minimal error handling, removed specific console errors for cleaner demo code if needed
+            // keeping basic error alert for functionality
             setSteps(prev => prev.map(s => ({...s, isProcessing: false})));
-            alert("Backend returned an error. Check console.");
+            alert("Backend Error"); 
         }
 
     } catch (error) {
-        console.error("Connection Failed:", error);
-        alert("Backend Connection Failed (Port 8080). Make sure python backend is running.");
         setSteps(prev => prev.map(s => ({...s, isProcessing: false})));
+        alert("Backend Connection Failed");
     }
   };
 
@@ -224,7 +239,7 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
     }
   };
 
-  // Helper to render Step 4 items with EDIT functionality
+  // Helper to render Step 4 items
   const renderStep4Item = (fieldKey: keyof Step4Details, label: string, value: string | null, required: boolean) => {
     const isEditing = editingField === fieldKey;
 
@@ -236,7 +251,6 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
                 </span>
                 
                 {isEditing ? (
-                    // Edit Mode: Input Field
                     <div className="flex gap-2 mt-1">
                         <input 
                             type="text" 
@@ -249,15 +263,12 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
                         <button onClick={cancelEdit} className="text-red-500 hover:text-red-700 font-bold px-1">✕</button>
                     </div>
                 ) : (
-                    // View Mode: Text Display
                     <div className="flex items-center gap-2 group-hover/item:bg-gray-50 rounded px-1 -ml-1 transition-colors">
                         {value ? (
                             <span className="text-gray-800 font-bold">{value}</span>
                         ) : (
                             <span className="text-gray-400 italic">ไม่พบข้อมูล</span>
                         )}
-                        
-                        {/* Edit Pencil Icon (Visible on Hover) */}
                         <button 
                             onClick={() => startEditing(fieldKey, value)}
                             className="opacity-0 group-hover/item:opacity-100 text-blue-400 hover:text-blue-600 transition-opacity p-1"
@@ -268,8 +279,6 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
                     </div>
                 )}
             </div>
-            
-            {/* Valid/Invalid Status Icon */}
             {!isEditing && (
                 <div className="ml-2 flex items-center h-full pt-1">
                     {value ? (
@@ -353,6 +362,7 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
                                     {step.type === 'manual' && step.selectedOption && (
                                         <span>Selected: {step.selectedOption}</span>
                                     )}
+                                    {/* Show Pass/Fail for 4 */}
                                     {step.id === 4 && (step.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
                                 </div>
                              )}
@@ -429,6 +439,31 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
                                             ไม่พบรายชื่อบุคคลในเอกสาร
                                         </div>
                                     )}
+                                </div>
+                              )}
+
+                              {/* FEEDBACK SECTION (Under Data) */}
+                              {(step.id === 4 || step.id === 6) && step.ocrResult && (
+                                <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
+                                    <span className="text-xs text-gray-400">Is this result correct?</span>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleFeedback(step.id, "up"); }}
+                                        className={`p-1.5 rounded transition-colors ${
+                                            step.feedback === "up" ? "bg-green-50 text-green-600 ring-1 ring-green-200" : "text-gray-400 hover:text-green-600 hover:bg-gray-50"
+                                        }`}
+                                        title="Correct"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg>
+                                    </button>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleFeedback(step.id, "down"); }}
+                                        className={`p-1.5 rounded transition-colors ${
+                                            step.feedback === "down" ? "bg-red-50 text-red-600 ring-1 ring-red-200" : "text-gray-400 hover:text-red-600 hover:bg-gray-50"
+                                        }`}
+                                        title="Incorrect"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22h0a3.13 3.13 0 0 1-3-3.88Z"/></svg>
+                                    </button>
                                 </div>
                               )}
 
