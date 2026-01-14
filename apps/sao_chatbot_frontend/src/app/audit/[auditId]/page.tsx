@@ -151,7 +151,7 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
         const formData = new FormData();
         formData.append("file", currentFile.fileObj);
 
-        const response = await fetch("http://localhost:8080/analyze", {
+        const response = await fetch("http://localhost:8000/analyze", {
             method: "POST",
             body: formData,
         });

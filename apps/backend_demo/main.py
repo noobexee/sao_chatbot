@@ -88,5 +88,4 @@ async def analyze_document(file: UploadFile = File(...)):
 if __name__ == "__main__":
     if not os.path.exists("temp_uploads"):
         os.makedirs("temp_uploads")
-    # Using 8080 to match your frontend config
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
