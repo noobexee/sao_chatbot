@@ -40,6 +40,7 @@ services:
     restart: on-failure:0
     ports:
       - "${WEAVIATE_PORT}:${WEAVIATE_PORT}"
+      - "50051:50051"
     environment:
       QUERY_DEFAULTS_LIMIT: 25
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'

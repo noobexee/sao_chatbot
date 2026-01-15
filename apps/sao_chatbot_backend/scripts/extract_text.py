@@ -12,10 +12,10 @@ mock_vector_store = MagicMock()
 sys.modules["src.db.vector_store"] = mock_vector_store
 
 try:
-    from src.app.services.ocr_service import TyphoonOCRLoader
+    from src.app.llm.ocr import TyphoonOCRLoader
 except ImportError:
     sys.path.append(str(CURRENT_DIR))
-    from src.app.services.ocr_service import TyphoonOCRLoader
+    from src.app.llm.ocr import TyphoonOCRLoader
 load_dotenv()
 
 INPUT_DIR = Path("data/documents") 
