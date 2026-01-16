@@ -11,6 +11,9 @@ from pydantic import BaseModel, Field
 from weaviate.classes.query import Filter 
 from src.app.llm.typhoon import TyphoonLLM
 from src.db.vector_store import get_vectorstore
+from dotenv import load_dotenv
+
+
 
 class SearchIntent(BaseModel):
     """Structure for the optimized legal search query."""
@@ -123,7 +126,7 @@ class Retriever:
             
         return composite_filter
 
-    def _rerank_documents(self, user_query: str, docs: List[Document], top_k: int = 5) -> List[Document]:
+    def _rerank_documents(self, user_query: str, docs: List[Document], top_k: int = 3) -> List[Document]:
         if not docs: return []
         pairs = [[user_query, doc.page_content] for doc in docs]
         scores = self.reranker.predict(pairs)
@@ -162,7 +165,7 @@ class Retriever:
             docs = self.vectorstore.similarity_search(
                 query, 
                 k=k, 
-                alpha=0.8,
+                alpha=0.6,
                 filters=time_filter 
             )
             all_docs.extend(docs)
@@ -179,7 +182,7 @@ class Retriever:
 async def main():
     query = "การรวบรวมพยานหลักฐานมีแนวทางอย่างไร"
     
-    
+    load_dotenv()
     retriever = Retriever()
     
     try:
@@ -206,7 +209,7 @@ async def main():
             retriever.vectorstore._client.close()
 
 async def main2():
-    query = "การรวบรวมพยานหลักฐานมีแนวทางอย่างไร"
+    query = "การกำหนดประเด็นการตรวจสอบ เกณฑ์ที่ใช้ในการตรวจสอบ และแนวทางการตรวจสอบ รวมถึงระยะเวลาในการดำเนินการ กรณีเรื่องที่คัดเลือกมาจากการประเมินความเสี่ยงของหน่วยรับตรวจ ให้ดำเนินการอย่างไร"
     test_date = "2025-12-20"
     
     retriever = Retriever()

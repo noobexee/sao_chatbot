@@ -10,7 +10,7 @@ from src.db.repositories.chat_repository import ChatRepository
 
 class Chatbot:
     def __init__(self):
-        self.llm = TyphoonLLM().get_model()
+        self.llm = TyphoonLLM()
         self.repository = ChatRepository()
         self.retriever = Retriever()
 
@@ -60,9 +60,6 @@ class Chatbot:
             return {"status": "error", "message": str(e)}
 
     def update_session(self, user_id: int, session_id: str, title: Optional[str] = None, is_pinned: Optional[bool] = None) -> Dict[str, Any]:
-        """
-        Updates session metadata (title, pinned status).
-        """
         try:
             success = self.repository.update_session_metadata(user_id, session_id, title, is_pinned)
             
@@ -122,4 +119,5 @@ class Chatbot:
             model_used=model_name, 
             ref=refs_data 
         )     
+
 chatbot = Chatbot()
