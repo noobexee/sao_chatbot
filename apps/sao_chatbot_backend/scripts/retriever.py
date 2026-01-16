@@ -180,7 +180,7 @@ class Retriever:
 
 
 async def main():
-    query = "การรวบรวมพยานหลักฐานมีแนวทางอย่างไร"
+    query = "การคัดเลือกเรื่องที่มาจากการประเมินความเสี่ยงต้องทำอย่างไร"
     
     load_dotenv()
     retriever = Retriever()

@@ -10,7 +10,7 @@ class TyphoonLLM(BaseLLM):
             api_key=settings.TYPHOON_API_KEY,
             model=model_name or settings.TYPHOON_MODEL,
             temperature=0.7,
-            max_tokens=4096
+            max_tokens=8192
         )
 
     def get_model(self):

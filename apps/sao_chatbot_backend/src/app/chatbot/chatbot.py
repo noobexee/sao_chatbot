@@ -16,6 +16,7 @@ class Chatbot:
 
     def _get_history_objects(self, user_id: int, session_id: str) -> List[Any]:
         rows = self.repository.get_messages_by_session(user_id, session_id)
+        print(rows)
         messages = []
         for row in rows:
             if row[0]: messages.append(HumanMessage(content=row[0]))

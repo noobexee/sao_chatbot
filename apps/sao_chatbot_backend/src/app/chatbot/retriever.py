@@ -132,7 +132,7 @@ class Retriever:
         return [doc for doc, score in doc_score_pairs[:top_k]]
 
     async def retrieve(self, user_query: str, history: List = None, k: int = 5, search_date: str = None) -> List[Document]:
-        
+
         analysis_result = await self.generate_search_queries(user_query, history)
         
         search_queries = analysis_result.get("rewritten_query", "")
