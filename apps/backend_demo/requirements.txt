@@ -8,3 +8,6 @@ python-docx
 google-genai
 python-dotenv
 psycopg2
+asyncio
+asyncpg
+datetime

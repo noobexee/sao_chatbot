@@ -93,6 +93,7 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
   const [showChecklist, setShowChecklist] = useState(false);
   const [steps, setSteps] = useState<AuditStep[]>(initialSteps);
   const [expandedStepIds, setExpandedStepIds] = useState<number[]>([]);
+  const [isSaving, setIsSaving] = useState(false); 
 
   // Editing States
   const [editingField, setEditingField] = useState<keyof Step4Details | null>(null);
@@ -124,9 +125,77 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
     );
   };
 
-  // --- HANDLE FEEDBACK (UPDATED) ---
+  // --- SAVE TO DATABASE FUNCTION ---
+  const handleSaveToDatabase = async () => {
+    if (!currentFile) {
+      alert("No file loaded to save!");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // 1. Save Session Logic (Call /save_audit)
+      // ถ้า params.auditId เป็น "new" หรือไม่มีค่า ให้ส่ง string ว่างไป เพื่อให้ Backend สร้าง UUID ให้
+      const sessionPayload = {
+        audit_id: (params.auditId === 'new' || !params.auditId) ? "" : params.auditId,
+        file_name: currentFile.name
+      };
+
+      console.log("Saving Session...", sessionPayload);
+      const sessionRes = await fetch("http://localhost:8000/save_audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sessionPayload),
+      });
+
+      const sessionResult = await sessionRes.json();
+      
+      if (sessionResult.status !== "success") {
+         throw new Error(sessionResult.message || "Failed to save session");
+      }
+
+      // *** CRITICAL FIX: รับค่า ID ที่แท้จริงจาก Backend ***
+      const finalAuditId = sessionResult.audit_id;
+      console.log("✅ Session Saved. Using Audit ID:", finalAuditId);
+
+      // 2. Save AI Results (Call /save_ai_result for each relevant step)
+      const stepsToSave = steps.filter(s => s.ocrResult);
+      
+      console.log(`Saving ${stepsToSave.length} steps with AI data...`);
+
+      for (const step of stepsToSave) {
+          const aiPayload = {
+              audit_id: finalAuditId, // <--- ใช้ ID ที่ได้จาก Backend แทน params.auditId
+              step_id: step.id,
+              result: step.ocrResult
+          };
+          
+          console.log(`Saving Step ${step.id}...`, aiPayload);
+          
+          const stepRes = await fetch("http://localhost:8000/save_ai_result", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(aiPayload),
+          });
+          
+          const stepResult = await stepRes.json();
+          if (stepResult.status !== "success") {
+              console.error(`Failed to save step ${step.id}`, stepResult);
+          }
+      }
+
+      alert(`Summarized and Saved successfully! (ID: ${finalAuditId})`);
+
+    } catch (error) {
+      console.error("Save Error:", error);
+      alert("Error saving data: " + error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // --- HANDLE FEEDBACK ---
   const handleFeedback = (stepId: number, type: FeedbackType) => {
-    // Just update state, no console.log
     setSteps(prev => prev.map(step => {
         if (step.id === stepId) {
             const newFeedback = step.feedback === type ? null : type;
@@ -188,8 +257,6 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
 
             setExpandedStepIds(prev => [...new Set([...prev, 4, 6])]);
         } else {
-            // Minimal error handling, removed specific console errors for cleaner demo code if needed
-            // keeping basic error alert for functionality
             setSteps(prev => prev.map(s => ({...s, isProcessing: false})));
             alert("Backend Error"); 
         }
@@ -329,9 +396,9 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
               </p>
               <button 
                 onClick={handleStartAnalysis}
-                className="px-6 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all text-sm font-medium shadow-sm"
+                className="w-full px-6 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all text-sm font-medium shadow-sm"
               >
-                Start
+                Start Analysis
               </button>
             </div>
         ) : (
@@ -362,7 +429,6 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
                                     {step.type === 'manual' && step.selectedOption && (
                                         <span>Selected: {step.selectedOption}</span>
                                     )}
-                                    {/* Show Pass/Fail for 4 */}
                                     {step.id === 4 && (step.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
                                 </div>
                              )}
@@ -473,12 +539,35 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
                     ))}
                 </div>
 
-                <div className="pt-4 mt-auto border-t border-gray-100">
+                <div className="pt-4 mt-auto border-t border-gray-100 flex flex-col gap-3">
+                    
+                    {/* BUTTON 1: Expand/Collapse All (Swapped position to top) */}
                     <button 
                         onClick={handleToggleAll}
                         className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 w-full font-medium transition-colors"
                     >
                         {expandedStepIds.length === steps.length ? 'ย่อทั้งหมด (Collapse All)' : 'ขยายทั้งหมด (Expand All)'}
+                    </button>
+
+                    {/* BUTTON 2: Summarize (Swapped position to bottom, Renamed) */}
+                    <button 
+                        onClick={handleSaveToDatabase}
+                        disabled={isSaving || !currentFile}
+                        className={`w-full px-6 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all text-sm font-medium shadow-sm flex items-center justify-center gap-2
+                            ${(isSaving || !currentFile) ? 'opacity-50 cursor-not-allowed' : ''}
+                        `}
+                    >
+                        {isSaving ? (
+                            <>
+                                <svg className="animate-spin h-4 w-4 text-blue-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                Saving...
+                            </>
+                        ) : (
+                            <>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                                Summarize
+                            </>
+                        )}
                     </button>
                 </div>
             </div>
