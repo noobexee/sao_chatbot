@@ -3,15 +3,11 @@ services:
     build:
       context: ./apps/sao_chatbot_backend
       dockerfile: Dockerfile
+    restart: always
     ports:
-      - "${BACKEND_PORT}:${BACKEND_PORT}"
-    restart: unless-stopped
+      - "${BACKEND_PORT}:${BACKEND_PORT}" 
     env_file:
-      - ./apps/sao_chatbot_backend/.env
-    environment:
-      SQL_DATABASE_URL: ${SQL_DATABASE_URL}
-    depends_on:
-      - redis
+      - ./apps/sao_chatbot_backend/.env 
     networks:
       - app-net
 
@@ -19,11 +15,9 @@ services:
     build:
       context: ./apps/sao_chatbot_frontend
       dockerfile: Dockerfile
+    restart: always
     ports:
       - "${FRONTEND_PORT}:${FRONTEND_PORT}"
-    restart: unless-stopped
-    extra_hosts:
-      - "localhost:host-gateway"
     env_file:
       - ./apps/sao_chatbot_frontend/.env.production
     depends_on:
@@ -34,4 +28,3 @@ services:
 networks:
   app-net:
     driver: bridge
-
