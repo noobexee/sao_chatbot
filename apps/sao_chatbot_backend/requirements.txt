@@ -121,3 +121,4 @@ weaviate-client==4.18.1
 xxhash==3.6.0
 yarl==1.22.0
 zstandard==0.25.0
+python-multipart==0.0.21

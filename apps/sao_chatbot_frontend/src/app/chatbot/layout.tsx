@@ -329,6 +329,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
             />
             <span className="absolute bottom-0 right-0 block h-3 w-3 rounded-full bg-green-500 ring-2 ring-white"></span>
           </div>
+
         </header>
         
          <div className="flex-1 relative w-full overflow-hidden">

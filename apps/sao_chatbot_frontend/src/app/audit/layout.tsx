@@ -168,7 +168,6 @@ export default function AuditLayout({
               </div>
             </Link>
           </div>
-
           <div className="cursor-pointer truncate relative h-10 w-10 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-gray-100">
             <Image
               src="/user-placeholder.jpg"
