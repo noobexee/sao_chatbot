@@ -1,15 +1,16 @@
-import os
 import fitz 
 import tempfile
 from typing import List
 from langchain_core.documents import Document
 from langchain_community.document_loaders.base import BaseLoader
 from typhoon_ocr import ocr_document
+from src.config import settings
+
 
 class TyphoonOCRLoader(BaseLoader):
     def __init__(self, file_path: str, api_key: str = None):
         self.file_path = file_path
-        self.api_key = api_key or os.getenv("TYPHOON_API_KEY")
+        self.api_key = api_key or settings.TYPHOON_API_KEY
         
         if not self.api_key:
             raise ValueError("Typhoon API Key is missing")
