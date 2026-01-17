@@ -1,6 +1,6 @@
 export default async function getUserHistory(user_id : string) {
-    console.log(`http://localhost:8000/api/v1/sessions/${user_id}`)
-    const response = await fetch(`http://localhost:8000/api/v1/sessions/${user_id}`) 
+    console.log(`${process.env.NEXT_PUBLIC_RAG_API_URL}/api/v1/sessions/${user_id}`)
+    const response = await fetch(`${process.env.NEXT_PUBLIC_RAG_API_URL}/api/v1/chatbot/sessions/${user_id}`) 
     if(!response.ok) {
         throw new Error("Failed to fetch history")
     }

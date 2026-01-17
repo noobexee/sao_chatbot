@@ -1,5 +1,5 @@
 export default async function getChatHistory(user_id: string, session_id: string) {
-  const url = `http://localhost:8000/api/v1/history/${user_id}/${session_id}`;
+  const url = `${process.env.NEXT_PUBLIC_RAG_API_URL}/api/v1/chatbot/history/${user_id}/${session_id}`;
   
   console.log(`Fetching history from: ${url}`);
 
