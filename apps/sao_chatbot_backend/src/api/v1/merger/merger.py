@@ -9,15 +9,26 @@ from typing import Optional
 from datetime import date
 import json
 
-class CleanTextPayload(BaseModel):
-    content: str
-
 class DocumentMeta(BaseModel):
     title: str
     pdf_name: str
     valid_from: Optional[date] = None
     valid_until: Optional[date] = None
     version: Optional[str] = None
+
+def find_doc_dir_by_id(doc_id: str) -> Optional[Path]:
+    if not MOCK_DIR.exists():
+        return None
+
+    for type_dir in MOCK_DIR.iterdir():
+        if not type_dir.is_dir():
+            continue
+
+        candidate = type_dir / doc_id
+        if candidate.exists() and candidate.is_dir():
+            return candidate
+
+    return None
 
 router = APIRouter()
 MOCK_DIR = Path("mock")
@@ -124,30 +135,50 @@ def upload_new_pdf(
         "text_endpoint": f"/merger/doc/{safe_type}/{doc_id}/text"
     }
 
-
 @router.get("/doc/{doc_id}/status")
 def get_status(doc_id: str):
-    status_path = MOCK_DIR / doc_id / "status.txt"
+    doc_dir = find_doc_dir_by_id(doc_id)
+    if not doc_dir:
+        raise HTTPException(404, "Document not found")
+    status_path = doc_dir / "status.txt"
     if not status_path.exists():
         raise HTTPException(404, "Status not found")
-    return {"status": status_path.read_text()}
+    return {"status": status_path.read_text(encoding="utf-8")}
 
 @router.get("/doc/{doc_id}/text")
 def get_text(doc_id: str):
-    text_path = MOCK_DIR / doc_id / "text.txt"
+    doc_dir = find_doc_dir_by_id(doc_id)
+    if not doc_dir:
+        raise HTTPException(404, "Document not found")
+    text_path = doc_dir / "text.txt"
     if not text_path.exists():
         raise HTTPException(404, "Text not found")
     return FileResponse(text_path, media_type="text/plain")
 
 @router.post("/doc/{doc_id}/text")
-def save_clean_text(doc_id: str, payload: CleanTextPayload):
-    clean_path = MOCK_DIR / doc_id / "text_clean.txt"
-    clean_path.write_text(payload.content, encoding="utf-8")
-    return {"message": "Cleaned text saved"}
+def save_clean_text(
+    doc_id: str,
+    file: UploadFile = File(...)
+):
+    doc_dir = find_doc_dir_by_id(doc_id)
+    if not doc_dir:
+        raise HTTPException(404, "Document not found")
+    if file.content_type not in ["text/plain"]:
+        raise HTTPException(400, "Only .txt files are allowed")
+    text_path = doc_dir / "text.txt"
+    content = file.file.read().decode("utf-8")
+    text_path.write_text(content, encoding="utf-8")
+    return {
+        "message": "Cleaned text uploaded and saved",
+        "doc_id": doc_id
+    }
 
 @router.get("/doc/{doc_id}/meta")
 def get_metadata(doc_id: str):
-    meta_path = MOCK_DIR / doc_id / "meta.json"
+    doc_dir = find_doc_dir_by_id(doc_id)
+    if not doc_dir:
+        raise HTTPException(404, "Document not found")
+    meta_path = doc_dir / "meta.json"
     if not meta_path.exists():
         raise HTTPException(404, "Metadata not found")
     return json.loads(meta_path.read_text(encoding="utf-8"))
