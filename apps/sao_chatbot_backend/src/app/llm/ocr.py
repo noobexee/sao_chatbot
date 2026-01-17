@@ -17,14 +17,14 @@ class TyphoonOCRLoader(BaseLoader):
 
     def load(self) -> List[Document]:
         file_name = self.file_path.split("/")[-1]
-        print(f"🌪️  [Typhoon OCR] Starting: {file_name}")
+        print(f"[Typhoon OCR] Starting: {file_name}")
 
         documents = []
         
         try:
             doc = fitz.open(self.file_path)
             total_pages = len(doc)
-            print(f"📄 Found {total_pages} pages. Processing page by page...")
+            print(f"Found {total_pages} pages. Processing page by page...")
 
             for page_num, page in enumerate(doc):
                 real_page_num = page_num + 1
