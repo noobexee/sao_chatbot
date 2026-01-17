@@ -4,6 +4,9 @@ from src.api.v1.models import APIResponse
 from src.app.chatbot.chatbot import chatbot
 
 router = APIRouter()
+
+#route http://localhost:8000/api/v1/chatbot/sessions/userid  
+#method GET
 @router.get("/sessions/{user_id}", response_model=APIResponse)
 def get_all_sessions(user_id: int):
     try:
@@ -19,7 +22,9 @@ def get_all_sessions(user_id: int):
             message=f"Failed to fetch sessions: {str(e)}",
             data=None
         )
-    
+
+#route http://localhost:8000/api/v1/history/user_id/session_id
+#method GET
 @router.get("/history/{user_id}/{session_id}", response_model=APIResponse)
 def get_chat_history(user_id: int, session_id: str):
     try:
@@ -41,7 +46,9 @@ def get_chat_history(user_id: int, session_id: str):
             message=f"Failed to fetch history: {str(e)}",
             data=None
         )
-    
+
+#route http://localhost:8000/api/v1/sessions/user_id/session_id
+#method DELETE
 @router.delete("/sessions/{user_id}/{session_id}", response_model=APIResponse)
 def delete_session(user_id: int, session_id: str):
     try:
@@ -65,6 +72,9 @@ def delete_session(user_id: int, session_id: str):
             message=f"Failed to delete session: {str(e)}",
             data=None
         )
+    
+#route http://localhost:8000/api/v1/sessions/user_id/session_id
+#method PUT
 @router.patch("/sessions/{user_id}/{session_id}", response_model=APIResponse)
 def update_session(user_id: int, session_id: str, payload: UpdateSessionRequest):
     try:

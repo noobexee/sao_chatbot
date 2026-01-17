@@ -6,7 +6,7 @@ Run this command to initialize PostgreSQL, Neo4j, and Weaviate. Note: Wait 10-20
 Once the databases are ready, run this to start the Backend, Frontend, and Redis:
 ./scripts/run-apps.sh
 
-🛑 Stop Everything
+Stop Everything
 To stop all services and free up ports:
 ./scripts-all.sh
 
@@ -21,3 +21,5 @@ These services handle the logic and user interface.
 
 ⚙️ Configuration (.env)
 The project relies on environment variables. Ensure you have a .env file in your project root (or specific app folders) defining the following:
+sao_chatbot_backend
+sao_chatbot_frontend

@@ -3,7 +3,7 @@ export async function updateSession(
   sessionId: string, 
   updates: { title?: string; is_pinned?: boolean }
 ) {
-  const url = `http://localhost:8000/api/v1/sessions/${userId}/${sessionId}`;
+  const url = `${process.env.NEXT_PUBLIC_RAG_API_URL}/api/v1/chatbot/sessions/${userId}/${sessionId}`;
   
   try {
     const response = await fetch(url, {

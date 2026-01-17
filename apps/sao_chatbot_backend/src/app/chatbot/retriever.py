@@ -1,148 +1,176 @@
-import json
+import asyncio
+from typing import List, Optional, Dict, Any
 from datetime import datetime
-from typing import List, Dict, Any
+
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.output_parsers import JsonOutputParser
+from sentence_transformers import CrossEncoder
+from langchain_core.output_parsers import PydanticOutputParser
+from pydantic import BaseModel, Field 
+from weaviate.classes.query import Filter 
 from src.app.llm.typhoon import TyphoonLLM
 from src.db.vector_store import get_vectorstore
+
+
+class SearchIntent(BaseModel):
+    """Structure for the optimized legal search query."""
+    
+    rewritten_query: str = Field(
+        description="The query rewritten into formal legal terminology. Combine all intent into one clear sentence. (e.g., Change 'how to submit letter' to 'Criteria for receiving written complaints')"
+    )
+    law_name: Optional[str] = Field(
+        description="Specific law or regulation name if explicitly mentioned. (e.g., 'ระเบียบสำนักงานตรวจเงินแผ่นดิน'). Return None if not mentioned.",
+        default=None
+    )
+    doc_type: Optional[str] = Field(
+        description="The type of document explicitly requested (e.g., 'ระเบียบ', 'คำสั่ง', 'พรบ', 'ประกาศ'). Return None if generic.",
+        default=None
+    )
+    search_date: str = Field(
+        description="The reference date for the search context in YYYY-MM-DD format."
+    )
 
 class Retriever:
     def __init__(self):
         self.vectorstore = get_vectorstore() 
         self.llm = TyphoonLLM().get_model()
-        
-        # DEFINED KNOWN FILES (Update this list if you add more files)
-        self.VALID_FILES = [
-            "regulation_v2566.txt",
-            "regulation_v2568.txt"
-        ]
+        self.reranker = CrossEncoder('BAAI/bge-reranker-v2-m3', device='cpu')
+        self.parser = PydanticOutputParser(pydantic_object=SearchIntent)
 
-    async def _extract_query_intent(self, query: str, history_messages: list) -> Dict[str, Any]:
-        """
-        Uses LLM to parse intent, restricting filenames to known valid ones.
-        """
-        valid_files_str = ", ".join(self.VALID_FILES)
+    async def generate_search_queries(self, user_query: str, history: List = None) -> Dict[str, Any]:
+
+        if history is None:
+            history = []
+
+        current_date = datetime.now().strftime("%Y-%m-%d")
+
+
+        system_prompt = """คุณเป็นผู้เชี่ยวชาญด้านการสืบค้นกฎหมายและระเบียบราชการ (Legal Search Specialist)
+        หน้าที่ของคุณคือ "แปลง" คำถามของผู้ใช้ (User Query) ให้เป็น "คำค้นหาทางกฎหมาย" (Legal Search Query) ที่แม่นยำที่สุด
         
-        system_prompt = f"""
-        You are a search query optimizer for legal regulations.
+        บริบทเวลาปัจจุบัน: {current_date}
+
+        ### คำสั่ง (Instructions):
+        1. **ห้ามแยกข้อย่อย:** รวมความต้องการทั้งหมดเป็น "ประโยคค้นหาเดียว"
         
-        KNOWN FILES IN DATABASE: [{valid_files_str}]
-        
-        Analyze the user's input (Thai or English) and extract:
-        1. 'date': A specific date mentioned (YYYY-MM-DD). If none, return null.
-        2. 'file': The specific filename implied. 
-           - RULE: Only return a filename if the user EXPLICITLY mentions a year/version (e.g. "Year 2566" -> "regulation_v2566.txt"). 
-           - If the user just says "Regulation" or "OAG Regulation" without a year, return null.
-           - MUST be one of the KNOWN FILES.
-        3. 'search_query': The cleaned core question (e.g. "ข้อ 9", "เบี้ยเลี้ยง"). Remove date/file references.
-        4. 'is_exact_clause': boolean, true if user asks for specific clause number (e.g. "ข้อ 9", "หมวด 2").
-        
-        Return JSON only.
+        2. **แปลงภาษาพูดเป็นภาษาทางการ:**
+           - ตัดคำฟุ่มเฟือย และใช้ศัพท์ราชการ (เช่น "เบิกเงิน" -> "ระเบียบการเบิกจ่าย")
+
+        3. **การจัดการวันที่ (Date Handling):**
+           - หากระบุวันที่เป็น พ.ศ. ให้แปลงเป็น ค.ศ. (ลบ 543) สำหรับฟิลด์ search_date
+           - ตัวอย่าง: "21 ม.ค. 2567" -> "2024-01-21"
+
+        4. **การแปลงเลขเป็นเลขไทย (Thai Numerals) [สำคัญมาก]:**
+           - ในส่วนของ `rewritten_query` หากมีการระบุตัวเลขเจาะจง เช่น มาตรา, ข้อ, หรือ จำนวนเงิน ต้องแปลงเลขอารบิก (0-9) เป็นเลขไทย (๐-๙) เสมอ
+           - ตัวอย่าง: "ข้อ 39" -> "ข้อ ๓๙"
+           - ตัวอย่าง: "มาตรา 112" -> "มาตรา ๑๑๒"
+           - ตัวอย่าง: "ฉบับที่ 2" -> "ฉบับที่ ๒"
+
+        5. **Extraction:** ระบุชื่อกฎหมายและประเภทเอกสารหากมี
+
+        {format_instructions}
         """
         
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
-            ("human", "{input}")
+            ("human", "ประวัติการสนทนา:\n{history}\n\nคำถาม: {input}")
         ])
-        
-        chain = prompt | self.llm | StrOutputParser()
-        
+
+        chain = prompt | self.llm | self.parser
+
         try:
-            result = await chain.ainvoke({"input": query})
-            clean_json = result.replace("```json", "").replace("```", "").strip()
-            return json.loads(clean_json)
+            # Execute the chain
+            response = await chain.ainvoke({
+                "input": user_query, 
+                "history": history,
+                "format_instructions": self.parser.get_format_instructions(),
+                "current_date": current_date
+            })
+            
+            return response.dict()
+
         except Exception as e:
-            print(f"⚠️ Intent Extraction Failed: {e}. Fallback to raw query.")
+            print(f"⚠️ Query Parsing Failed: {e}")
             return {
-                "date": None, 
-                "file": None, 
-                "search_query": query, 
-                "is_exact_clause": False
+                "rewritten_query": user_query,
+                "law_name": None,
+                "doc_type": None,
+                "search_date": current_date
             }
-
-    async def retrieve(self, user_query: str, k: int = 4) -> List[Document]:
-        # 1. Understand Intent
-        intent = await self._extract_query_intent(user_query)
-        
-        query_text = intent.get("search_query") or user_query
-        target_file = intent.get("file")
-        query_date = intent.get("date")
-        is_exact = intent.get("is_exact_clause", False)
-
-        # 2. Define Search Config
-        # Use Alpha=0.5 (Balanced) or 0.7 (Vector-heavy) for Thai 
-        # (Standard BM25 keyword search struggles with Thai tokenization "ข้อ 9")
-        alpha_val = 0.5 
-        
-        # 3. Construct Filters
-        conditions = []
-        
-        # If user DID NOT specify a date, we usually default to "Today".
-        # But we will save this logic for the "Strict" search first.
-        if query_date:
-            target_date_iso = f"{query_date}T00:00:00Z"
+    def _build_filters(self, search_date: str, law_name: str = None, doc_type: str = None):
+        filters = []
+        if "T" not in search_date:
+            rfc3339_date = f"{search_date}T00:00:00Z"
         else:
-            target_date_iso = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-
-        # Base time filter (Active Laws)
-        time_filter = {
-            "operator": "And",
-            "operands": [
-                {"path": ["valid_from"], "operator": "LessThanEqual", "valueString": target_date_iso},
-                {"path": ["valid_until"], "operator": "GreaterThanEqual", "valueString": target_date_iso}
-            ]
-        }
-        
-        # File filter
-        file_filter = None
-        if target_file and target_file in self.VALID_FILES:
-            file_filter = {"path": ["source"], "operator": "Equal", "valueString": target_file}
-
-        # Combine filters for the PRIMARY search
-        primary_conditions = [time_filter]
-        if file_filter:
-            primary_conditions.append(file_filter)
+            rfc3339_date = search_date
             
-        final_filter = {"operator": "And", "operands": primary_conditions}
+        date_filter = (
+            Filter.by_property("valid_from").less_or_equal(rfc3339_date) & 
+            Filter.by_property("valid_until").greater_or_equal(rfc3339_date)
+        )
+        filters.append(date_filter)
 
-        # 4. EXECUTE PRIMARY SEARCH (Strict Time)
-        print(f"🕵️ Attempt 1: Searching Active Laws ({target_date_iso})...")
+        if law_name:
+            filters.append(Filter.by_property("law_name").like(f"*{law_name}*"))
+
+        if doc_type:
+             filters.append(Filter.by_property("doc_type").like(f"*{doc_type}*"))
+
+        composite_filter = filters[0]
+        for f in filters[1:]:
+            composite_filter = composite_filter & f
+            
+        return composite_filter
+
+    def _rerank_documents(self, user_query: str, docs: List[Document], top_k: int = 3) -> List[Document]:
+        if not docs: return []
+        pairs = [[user_query, doc.page_content] for doc in docs]
+        scores = self.reranker.predict(pairs)
+        doc_score_pairs = list(zip(docs, scores))
+        doc_score_pairs.sort(key=lambda x: x[1], reverse=True)
+        return [doc for doc, score in doc_score_pairs[:top_k]]
+
+    async def retrieve(self, user_query: str, history: List = None, k: int = 5, search_date: str = None) -> List[Document]:
+
+        analysis_result = await self.generate_search_queries(user_query, history)
+        
+        search_queries = analysis_result.get("rewritten_query", "")
+        extracted_date = analysis_result.get("search_date")
+        law_name_filter = analysis_result.get("law_name")
+        doc_type_filter = analysis_result.get("doc_type")
+
+        final_date = search_date if search_date else (extracted_date)
+        print(f"search date: {final_date}")
+
         try:
-            docs = self.vectorstore.similarity_search(
-                query_text, k=k,
-                search_kwargs={"filters": final_filter, "hybrid_search": True, "alpha": alpha_val}
+            time_filter = self._build_filters(
+                search_date=final_date,
+                law_name=law_name_filter,
+                doc_type=doc_type_filter
             )
-        except Exception as e:
-            print(f"⚠️ Search Error: {e}")
-            docs = []
+            if law_name_filter or doc_type_filter:
+                print(f"🎯 Sniper Filter Active: Law='{law_name_filter}', Type='{doc_type_filter}'")
+        except ValueError as e:
+            print(f"⚠️ Filter Error: {e}")
+            time_filter = None
 
-        # 5. FALLBACK SEARCH (If 0 results found)
-        # If we found nothing AND the user didn't specify a date/file manually, 
-        # they might be looking for an old law without knowing it.
-        if not docs and not query_date:
-            print(f"⚠️ No active laws found. Falling back to ALL TIME search...")
-            
-            # Remove Time Filter, Keep File Filter (if any)
-            fallback_filter = file_filter if file_filter else None
-            
-            try:
-                docs = self.vectorstore.similarity_search(
-                    query_text, k=k,
-                    search_kwargs={"filters": fallback_filter, "hybrid_search": True, "alpha": alpha_val} if fallback_filter else {"hybrid_search": True, "alpha": alpha_val}
-                )
-                
-                # Tag these docs so the Chatbot knows they might be expired
-                for d in docs:
-                    d.metadata["_fallback_used"] = True
-                    d.metadata["_analysis_date"] = "ALL TIME (Including Expired)"
-                    
-            except Exception as e:
-                print(f"⚠️ Fallback Error: {e}")
-                docs = []
-        else:
-            # Mark normal docs
-            for d in docs:
-                d.metadata["_analysis_date"] = target_date_iso
+        all_docs = []
+        
+        print(f"Searching: {search_queries} @ {final_date}")
+        for query in search_queries:
+            docs = self.vectorstore.similarity_search(
+                query, 
+                k=k, 
+                alpha=0.6,
+                filters=time_filter 
+            )
+            all_docs.extend(docs)
 
-        return docs
+        unique_docs_map = {doc.page_content: doc for doc in all_docs}
+        unique_candidates = list(unique_docs_map.values())
+        
+        print(f"Found {len(unique_candidates)} candidates. Re-ranking...")
+        final_docs = self._rerank_documents(user_query, unique_candidates, top_k=5)
+
+        return final_docs

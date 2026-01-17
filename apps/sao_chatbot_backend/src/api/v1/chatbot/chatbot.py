@@ -5,6 +5,7 @@ from src.app.chatbot.chatbot import chatbot
 
 router = APIRouter()
 
+#route http://localhost:8000/api/v1/chatbot/query
 @router.post("/query", response_model=APIResponse)
 async def run_rag(request: ChatRequest):
     try:

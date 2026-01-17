@@ -1,5 +1,5 @@
 export default async function deleteChatHistory(user_id: string, session_id: string) {
-  const url = `http://localhost:8000/api/v1/sessions/${user_id}/${session_id}`;
+  const url = `${process.env.NEXT_PUBLIC_RAG_API_URL}/api/v1/chatbot/sessions/${user_id}/${session_id}`;
   
   try {
     const response = await fetch(url, {

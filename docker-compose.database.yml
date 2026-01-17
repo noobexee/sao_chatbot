@@ -18,22 +18,6 @@ services:
     networks:
       - db-net
 
-  graph-db:
-    image: neo4j:5.26.16
-    container_name: graph_db
-    restart: unless-stopped
-    ports:
-      - "${NEO4J_HTTP_PORT}:${NEO4J_HTTP_PORT}"
-      - "${NEO4J_BOLT_PORT}:${NEO4J_BOLT_PORT}"
-    environment:
-      NEO4J_AUTH: ${NEO4J_AUTH}
-    volumes:
-      - neo4j-data:/data
-      - neo4j-logs:/logs
-      - ./database/graph_db/neo4j.conf:/config/neo4j.conf
-    networks:
-      - db-net
-
   vector-db:
     image: semitechnologies/weaviate:1.34.0
     container_name: vector_db
@@ -55,10 +39,6 @@ services:
 
 volumes:
   postgres-data:
-    driver: local
-  neo4j-data:
-    driver: local
-  neo4j-logs:
     driver: local
   weaviate-data:
     driver: local

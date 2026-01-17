@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from src.app.services.ocr_service import TyphoonOCRLoader
+from src.app.llm.ocr import TyphoonOCRLoader
 from src.db.vector_store import get_vectorstore
 
 CURRENT_DIR = Path(__file__).resolve().parent

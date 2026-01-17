@@ -7,7 +7,7 @@ class GeminiLLM(BaseLLM):
     def __init__(self, model_name: str | None = None):
         # Using the direct class constructor to match ChatOpenAI pattern
         self._llm_instance = ChatGoogleGenerativeAI(
-            model=model_name or os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+            model=model_name or settings.GEMINI_MODEL,
             google_api_key=settings.GOOGLE_API_KEY, 
             temperature=0.7
         )

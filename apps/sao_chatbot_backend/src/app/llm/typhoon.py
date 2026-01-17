@@ -1,16 +1,16 @@
 import os
 from langchain_openai import ChatOpenAI
-
+from src.config import settings
 from src.app.llm.base import BaseLLM
 
 class TyphoonLLM(BaseLLM):
     def __init__(self, model_name: str | None = None):  
         self._llm_instance = ChatOpenAI(
-            base_url=os.getenv("TYPHOON_API_BASE_URL", "https://api.opentyphoon.ai/v1"),
-            api_key=os.getenv("TYPHOON_API_KEY", ""),
-            model=model_name or os.getenv("TYPHOON_MODEL", "typhoon-v2.1-12b-instruct"),
+            base_url=settings.TYPHOON_API_BASE_URL,
+            api_key=settings.TYPHOON_API_KEY,
+            model=model_name or settings.TYPHOON_MODEL,
             temperature=0.7,
-            max_tokens=4096
+            max_tokens=8192
         )
 
     def get_model(self):
