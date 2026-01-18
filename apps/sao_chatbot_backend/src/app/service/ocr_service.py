@@ -1,5 +1,5 @@
 from pathlib import Path
-from src.app.llm_base.ocr import TyphoonOCRLoader
+from src.app.llm.ocr import TyphoonOCRLoader
 from typing import List
 from langchain_core.documents import Document
 

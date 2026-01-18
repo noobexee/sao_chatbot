@@ -9,7 +9,7 @@ from sentence_transformers import CrossEncoder
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field 
 from weaviate.classes.query import Filter 
-from src.app.llm_base.typhoon import TyphoonLLM
+from src.app.llm.typhoon import TyphoonLLM
 from src.db.vector_store import get_vectorstore
 
 
