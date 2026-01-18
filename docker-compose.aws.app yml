@@ -1,0 +1,35 @@
+services:
+  backend:
+    build:
+      context: ./apps/sao_chatbot_backend
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "${BACKEND_PORT}:${BACKEND_PORT}" 
+    env_file:
+      - ./apps/sao_chatbot_backend/.env 
+    networks:
+      - app-net
+
+  frontend:
+    build:
+      context: ./apps/sao_chatbot_frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_RAG_API_URL: "${NEXT_PUBLIC_RAG_API_URL}"
+        INTERNAL_API_URL: "${INTERNAL_API_URL}"
+    restart: always
+    ports:
+      - "${FRONTEND_PORT}:${FRONTEND_PORT}"
+    env_file:
+      - ./apps/sao_chatbot_frontend/.env.production
+    depends_on:
+      - backend
+    networks:
+      - app-net
+
+networks:
+  app-net:
+    driver: bridge
+
+  
