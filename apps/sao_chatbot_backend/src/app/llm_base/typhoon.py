@@ -1,7 +1,7 @@
 import os
 from langchain_openai import ChatOpenAI
 from src.config import settings
-from src.app.llm.base import BaseLLM
+from src.app.llm_base.base import BaseLLM
 
 class TyphoonLLM(BaseLLM):
     def __init__(self, model_name: str | None = None):  

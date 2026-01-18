@@ -1,112 +1,139 @@
-from fastapi.responses import FileResponse
-from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, HTTPException
+from src.api.v1.merger.doc_manage import find_doc_dir_by_id
+from src.app.llm_base.gemini import GeminiLLM
 from pathlib import Path
+import json
 import uuid
-import shutil
-from src.app.merger.ocr_service import run_ocr_job
 from pydantic import BaseModel
-
-class CleanTextPayload(BaseModel):
-    content: str
+from typing import Tuple
+from datetime import datetime
 
 router = APIRouter()
-
 MOCK_DIR = Path("mock")
 
-@router.get("/merger/doc")
-def list_documents():
-    if not MOCK_DIR.exists():
-        return []
+class MergeRequest(BaseModel):
+    base_doc_id: str
+    amend_doc_id: str
 
-    docs = []
-    for folder in MOCK_DIR.iterdir():
-        if folder.is_dir():
-            docs.append({
-                "id": folder.name,
-                "has_pdf": (folder / "original.pdf").exists(),
-                "has_text": (folder / "text.txt").exists()
-            })
-    return docs
-
-@router.get("/merger/doc/{doc_id}/original")
-def get_original_pdf(doc_id: str):
-    pdf_path = MOCK_DIR / doc_id / "original.pdf"
-
-    if not pdf_path.exists():
-        raise HTTPException(status_code=404, detail="PDF not found")
-
-    return FileResponse(
-        pdf_path,
-        media_type="application/pdf",
-        filename="original.pdf"
-    )
-
-@router.get("/merger/doc/{doc_id}/text")
-def get_text(doc_id: str):
-    text_path = MOCK_DIR / doc_id / "text.txt"
-
+def load_text_and_meta(doc_id: str) -> Tuple[str, dict, Path]:
+    doc_dir = find_doc_dir_by_id(doc_id)
+    if not doc_dir:
+        raise HTTPException(404, f"Document {doc_id} not found")
+    text_path = doc_dir / "text.txt"
+    meta_path = doc_dir / "meta.json"
     if not text_path.exists():
-        raise HTTPException(status_code=404, detail="Text file not found")
-
-    return FileResponse(
-        text_path,
-        media_type="text/plain",
-        filename="text.txt"
+        raise HTTPException(400, f"text.txt missing for {doc_id}")
+    if not meta_path.exists():
+        raise HTTPException(400, f"meta.json missing for {doc_id}")
+    return (
+        text_path.read_text(encoding="utf-8"),
+        json.loads(meta_path.read_text(encoding="utf-8")),
+        doc_dir
     )
 
-@router.post("/doc")
-def upload_new_pdf(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...)
+@router.put("/merge")
+def merge_documents(
+    base_doc_id: str,
+    amend_doc_id: str,
 ):
-    if file.content_type != "application/pdf":
-        raise HTTPException(400, "Only PDF allowed")
 
-    doc_id = str(uuid.uuid4())
-    doc_dir = MOCK_DIR / doc_id
-    doc_dir.mkdir(parents=True)
+    base_text, base_meta, _ = load_text_and_meta(base_doc_id)
+    amend_text, amend_meta, _ = load_text_and_meta(amend_doc_id)
 
-    pdf_path = doc_dir / "original.pdf"
-    with pdf_path.open("wb") as f:
-        shutil.copyfileobj(file.file, f)
+    title = base_meta["title"]
+    doc_type = base_meta["type"]
+    base_year = base_meta.get("year")
+    amend_year = amend_meta.get("year")
+    amend_version = amend_meta.get("version", "")
 
-    (doc_dir / "text.txt").write_text("", encoding="utf-8")
-    (doc_dir / "status.txt").write_text("queued", encoding="utf-8")
+    prompt = """
+  รวมเอกสาร {{AMEND_YEAR}} ({{AMEND_VERSION}}) เข้ากับเอกสาร {{BASE_YEAR}} 
+  โดยให้เอกสาร {{AMEND_YEAR}} ({{AMEND_VERSION}}) เป็นตัวแก้ไขเอกสาร {{BASE_YEAR}}
 
-    background_tasks.add_task(run_ocr_job, doc_dir)
+  เงื่อนไข:
+  1) จงอ่านเนื้อหาทั้งสองฉบับและรวมตามหลักกฎหมายเท่านั้น  
+  2) ห้ามดัดแปลง เปลี่ยนคำศัพท์ หรือเรียบเรียงใหม่ ไม่ว่ากรณีใด  
+  3) ให้แก้ไขเฉพาะส่วนที่ระบุไว้ในเอกสาร {{AMEND_YEAR}} ({{AMEND_VERSION}})  
+  4) โครงสร้างหลักของเอกสารต้องยึดตามเอกสาร {{BASE_YEAR}}  
+  5) ข้อความในปี {{BASE_YEAR}} ที่ถูกยกเลิกให้ลบออกทั้งหมด  
+  6) ข้อความในปี {{BASE_YEAR}} ที่ถูกแก้ไขให้ลบออกทั้งหมด  
 
+  การทำเครื่องหมายการเปลี่ยนแปลง (เคร่งครัด):
+  - ให้ใส่อ้างอิง **เฉพาะท้ายวรรค/บรรทัดที่มีการเปลี่ยนแปลงเท่านั้น**
+  - ห้ามใส่อ้างอิงในหัวข้อ ชื่อข้อ ชื่อหมวด หรือบรรทัดที่ไม่มีการเปลี่ยนแปลง
+  - ห้ามใส่อ้างอิงซ้ำหลายครั้งในวรรคเดียว
+
+  กรณีเพิ่มข้อความ:
+  - ทุกวรรค/บรรทัดที่ **เพิ่มใหม่** ลงในเอกสาร {{BASE_YEAR}} 
+    โดยเอกสาร {{AMEND_YEAR}} ({{AMEND_VERSION}})
+    และมีคำสั่งนำหน้าว่า  
+    "ให้เพิ่มความต่อไปนี้เป็นวรรค y ของข้อ x ของระเบียบสำนักงานการตรวจเงินแผ่นดินว่าด้วย การตรวจสอบการปฏิบัติตามกฎหมาย"  
+    ให้ใส่ข้อความ  
+    “(เพิ่มเติมโดย{{AMEND_VERSION}} พ.ศ. {{AMEND_YEAR}})”  
+    **ต่อท้ายวรรค/บรรทัดนั้นเท่านั้น**
+
+  กรณีแก้ไขข้อความ:
+  - ทุกวรรค/บรรทัดที่ **ถูกแก้ไข** จากเอกสาร {{BASE_YEAR}} 
+    โดยเอกสาร {{AMEND_YEAR}} ({{AMEND_VERSION}})
+    และมีคำสั่งนำหน้าว่า  
+    "ให้ยกเลิกความในข้อ x ของระเบียบสำนักงานการตรวจเงินแผ่นดินว่าด้วย การตรวจสอบการปฏิบัติตามกฎหมาย และให้ใช้ความต่อไปนี้แทน"  
+    ให้ใส่ข้อความ  
+    “(ยกเลิกโดย{{AMEND_VERSION}} พ.ศ. {{AMEND_YEAR}})”  
+    **ต่อท้ายวรรค/บรรทัดนั้นเท่านั้น**
+
+  ข้อห้าม (สำคัญมาก):
+  - ห้ามใส่อ้างอิงในบรรทัดที่ไม่ได้ถูกเพิ่มหรือแก้ไข  
+  - ห้ามใส่อ้างอิงในบรรทัดที่ถูกยกเลิกแล้ว  
+  - ห้ามย้ายตำแหน่งอ้างอิงไปไว้ต้นบรรทัดหรือบรรทัดถัดไป  
+
+  กรณีพิเศษ:
+  - ข้อความที่ **ไม่มี** คำสั่งนำหน้าดังต่อไปนี้  
+    1) "ให้เพิ่มความต่อไปนี้เป็นวรรค y ของข้อ x ของระเบียบสำนักงานการตรวจเงินแผ่นดินว่าด้วย การตรวจสอบการปฏิบัติตามกฎหมาย"  
+    2) "ให้ยกเลิกความในข้อ x ของระเบียบสำนักงานการตรวจเงินแผ่นดินว่าด้วย การตรวจสอบการปฏิบัติตามกฎหมาย และให้ใช้ความต่อไปนี้แทน"  
+
+    ให้นำข้อความนั้นไปจัดไว้ **ท้ายเอกสารเท่านั้น**  
+    และ **ห้ามเปลี่ยนเลขข้อเดิม**
+  """
+
+    llm = GeminiLLM()
+    response = llm.invoke(
+        system_prompt="คุณเป็นผู้เชี่ยวชาญด้านกฎหมายและการรวมเอกสารตามหลักนิติกรรม",
+        prompt=prompt,
+        txt_files=[
+            base_text.encode("utf-8"),
+            amend_text.encode("utf-8"),
+        ],
+        mime_types=["text/plain", "text/plain"],
+    )
+    merged_text = response.content
+    new_doc_id = str(uuid.uuid4())
+    merge_dir = MOCK_DIR / doc_type / new_doc_id
+    merge_dir.mkdir(parents=True, exist_ok=True)
+    (merge_dir / "text.txt").write_text(merged_text, encoding="utf-8")
+    (merge_dir / "status.txt").write_text("merged", encoding="utf-8")
+    (merge_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "title": title,
+                "type": doc_type,
+                "base_doc_id": base_doc_id,
+                "amend_doc_id": amend_doc_id,
+                "base_year": base_year,
+                "amend_year": amend_year,
+                "amend_version": amend_version,
+                "generated_at": datetime.utcnow().isoformat(),
+                "kind": "merge_snapshot"
+            },
+            ensure_ascii=False,
+            indent=2
+        ),
+        encoding="utf-8"
+    )
     return {
-        "id": doc_id,
-        "message": "PDF uploaded. OCR processing started.",
-        "status_endpoint": f"/merger/doc/{doc_id}/status",
-        "text_endpoint": f"/merger/doc/{doc_id}/text"
+        "status": "success",
+        "id": new_doc_id,
+        "type": doc_type,
+        "title": title,
+        "text_endpoint": f"/doc/{new_doc_id}/text",
+        "meta_endpoint": f"/doc/{new_doc_id}/meta"
     }
-
-@router.get("/doc/{doc_id}/status")
-def get_status(doc_id: str):
-    status_path = MOCK_DIR / doc_id / "status.txt"
-
-    if not status_path.exists():
-        raise HTTPException(404, "Status not found")
-
-    return {
-        "status": status_path.read_text(encoding="utf-8")
-    }
-
-from fastapi.responses import FileResponse
-
-@router.get("/doc/{doc_id}/text")
-def get_text(doc_id: str):
-    text_path = MOCK_DIR / doc_id / "text.txt"
-
-    if not text_path.exists():
-        raise HTTPException(404, "Text not found")
-
-    return FileResponse(text_path, media_type="text/plain")
-
-@router.post("/doc/{doc_id}/text")
-def save_clean_text(doc_id: str, payload: CleanTextPayload):
-    clean_path = MOCK_DIR / doc_id / "text_clean.txt"
-    clean_path.write_text(payload.content, encoding="utf-8")
-
-    return {"message": "Cleaned text saved"}
