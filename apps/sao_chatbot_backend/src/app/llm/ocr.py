@@ -72,3 +72,72 @@ class TyphoonOCRLoader(BaseLoader):
         except Exception as e:
             print(f"[Typhoon OCR] Critical Failure on {file_name}: {e}")
             return []
+
+    def extract_text_only(self) -> List[Document]:
+        """
+        Extracts raw text directly from the file without using OCR or API keys.
+        Supports: .pdf (digital), .docx, .txt
+        """
+        ext = self.file_path.split("/")[-1].split(".")[-1].lower()
+        extracted_text = ""
+        file_name = self.file_path.split("/")[-1]
+        print(f"[Typhoon OCR] Starting: {file_name}")
+
+        try:
+            # 1. Handle PDF (Digital Text)
+            if ext == '.pdf':
+                with fitz.open(self.file_path) as doc:
+                    for page in doc:
+                        extracted_text += page.get_text() + "\n"
+            
+            # 2. Handle DOCX
+            elif ext == '.docx':
+                try:
+                    import docx
+                except ImportError:
+                    raise ImportError("Library 'python-docx' is required for .docx files. Run: pip install python-docx")
+                
+                doc = docx.Document(self.file_path)
+                # Join paragraphs with newlines
+                extracted_text = "\n".join([para.text for para in doc.paragraphs])
+
+            # 3. Handle TXT
+            elif ext == '.txt':
+                with open(self.file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    extracted_text = f.read()
+
+            # 4. Handle DOC (Legacy)
+            elif ext == '.doc':
+                print("[Direct Extract] Warning: .doc is a binary format. Attempting conversion via textract (requires OS dependencies).")
+                try:
+                    import textract
+                    # textract returns bytes, so decode it
+                    extracted_text = textract.process(self.file_path).decode('utf-8')
+                except ImportError:
+                    print("[Direct Extract] Error: 'textract' library missing. Run: pip install textract")
+                    return []
+                except Exception as e:
+                    print(f"[Direct Extract] Error processing .doc: {e}")
+                    return []
+
+            else:
+                print(f"[Direct Extract] Unsupported file extension: {ext}")
+                return []
+
+            # Check if we actually got anything (e.g., scanned PDFs will return empty string here)
+            if not extracted_text.strip():
+                print(f"[Direct Extract] Warning: No text found in {file_name}. It might be a scanned image/PDF.")
+                return []
+
+            # Wrap in LangChain Document
+            return [Document(
+                page_content=extracted_text,
+                metadata={
+                    "source": self.file_path,
+                    "engine": "direct-extract"
+                }
+            )]
+
+        except Exception as e:
+            print(f"[Direct Extract] Critical Failure on {file_name}: {e}")
+            return []
