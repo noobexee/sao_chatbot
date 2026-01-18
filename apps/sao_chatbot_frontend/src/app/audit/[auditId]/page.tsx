@@ -13,13 +13,27 @@ interface Person {
   role: string;
 }
 
-// Editable Step 4 Details
+// --- NEW: Structured Data Pattern ---
+interface FieldData {
+  value: string | null;      // ค่าปัจจุบัน (แสดงผล)
+  original: string | null;   // ค่าดั้งเดิมจาก AI (สำหรับบันทึก ai_value)
+  isEdited: boolean;         // สถานะการแก้ไข (user_edit)
+}
+
+// Helper to create FieldData
+const createField = (val: string | null): FieldData => ({
+  value: val,
+  original: val,
+  isEdited: false
+});
+
+// Editable Step 4 Details (Updated to use FieldData)
 interface Step4Details {
-  entity: string | null;
-  behavior: string | null;
-  official: string | null;
-  date: string | null;
-  location: string | null;
+  entity: FieldData;
+  behavior: FieldData;
+  official: FieldData;
+  date: FieldData;
+  location: FieldData;
 }
 
 interface AuditStep {
@@ -39,7 +53,7 @@ interface AuditStep {
     title: string;
     reason?: string;
     people?: Person[];
-    details?: Step4Details;
+    details?: Step4Details; // Updated Type
   };
 }
 
@@ -135,7 +149,6 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
     setIsSaving(true);
     try {
       // 1. Save Session Logic (Call /save_audit)
-      // ถ้า params.auditId เป็น "new" หรือไม่มีค่า ให้ส่ง string ว่างไป เพื่อให้ Backend สร้าง UUID ให้
       const sessionPayload = {
         audit_id: (params.auditId === 'new' || !params.auditId) ? "" : params.auditId,
         file_name: currentFile.name
@@ -154,7 +167,6 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
          throw new Error(sessionResult.message || "Failed to save session");
       }
 
-      // *** CRITICAL FIX: รับค่า ID ที่แท้จริงจาก Backend ***
       const finalAuditId = sessionResult.audit_id;
       console.log("✅ Session Saved. Using Audit ID:", finalAuditId);
 
@@ -165,9 +177,9 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
 
       for (const step of stepsToSave) {
           const aiPayload = {
-              audit_id: finalAuditId, // <--- ใช้ ID ที่ได้จาก Backend แทน params.auditId
+              audit_id: finalAuditId,
               step_id: step.id,
-              result: step.ocrResult
+              result: step.ocrResult // This now includes the structured FieldData
           };
           
           console.log(`Saving Step ${step.id}...`, aiPayload);
@@ -232,11 +244,23 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
 
             setSteps(prev => prev.map(step => {
                 if (step.id === 4) {
+                    // Convert raw strings from API to FieldData objects
+                    const structuredDetails: Step4Details = {
+                        entity: createField(step4.details?.entity || null),
+                        behavior: createField(step4.details?.behavior || null),
+                        official: createField(step4.details?.official || null),
+                        date: createField(step4.details?.date || null),
+                        location: createField(step4.details?.location || null)
+                    };
+
                     return {
                         ...step,
                         isProcessing: false,
                         status: step4.status,
-                        ocrResult: step4
+                        ocrResult: {
+                            ...step4,
+                            details: structuredDetails // Store as structured data
+                        }
                     };
                 }
                 if (step.id === 6) {
@@ -267,22 +291,32 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
     }
   };
 
-  // --- EDITING LOGIC ---
-  const startEditing = (key: keyof Step4Details, currentValue: string | null) => {
+  // --- EDITING LOGIC (UPDATED) ---
+  const startEditing = (key: keyof Step4Details, field: FieldData) => {
     setEditingField(key);
-    setTempEditValue(currentValue || "");
+    setTempEditValue(field.value || "");
   };
 
   const saveEdit = (key: keyof Step4Details) => {
     setSteps(prev => prev.map(step => {
         if (step.id === 4 && step.ocrResult && step.ocrResult.details) {
+            const currentField = step.ocrResult.details[key];
+            
+            // Logic: ถ้าค่าใหม่ไม่เท่ากับค่าเดิม หรือ ถูกแก้ไขไปแล้ว ให้ mark ว่า isEdited
+            // (หรือจะปรับเป็น always true เมื่อกด save ก็ได้ตามที่คุยกัน)
+            const newValue = tempEditValue;
+            
             return {
                 ...step,
                 ocrResult: {
                     ...step.ocrResult,
                     details: {
                         ...step.ocrResult.details,
-                        [key]: tempEditValue
+                        [key]: {
+                            ...currentField,
+                            value: newValue,
+                            isEdited: true // Flag ว่า User แก้ไขแล้ว
+                        }
                     }
                 }
             };
@@ -306,15 +340,19 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
     }
   };
 
-  // Helper to render Step 4 items
-  const renderStep4Item = (fieldKey: keyof Step4Details, label: string, value: string | null, required: boolean) => {
+  // Helper to render Step 4 items (UPDATED)
+  const renderStep4Item = (fieldKey: keyof Step4Details, label: string, field: FieldData | undefined, required: boolean) => {
+    if (!field) return null; // Guard clause
+    
     const isEditing = editingField === fieldKey;
+    const displayValue = field.value;
 
     return (
         <div className="flex items-start justify-between text-sm py-2 border-b border-gray-100 last:border-0 group/item">
             <div className="flex flex-col flex-1 mr-2">
                 <span className="text-gray-600 font-medium mb-1">
                     {label} {required && <span className="text-red-500">*</span>}
+                    {field.isEdited && <span className="text-xs text-orange-500 ml-2">(Edited)</span>}
                 </span>
                 
                 {isEditing ? (
@@ -331,13 +369,15 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
                     </div>
                 ) : (
                     <div className="flex items-center gap-2 group-hover/item:bg-gray-50 rounded px-1 -ml-1 transition-colors">
-                        {value ? (
-                            <span className="text-gray-800 font-bold">{value}</span>
+                        {displayValue ? (
+                            <span className={`font-bold ${field.isEdited ? 'text-gray-900' : 'text-gray-800'}`}>
+                                {displayValue}
+                            </span>
                         ) : (
                             <span className="text-gray-400 italic">ไม่พบข้อมูล</span>
                         )}
                         <button 
-                            onClick={() => startEditing(fieldKey, value)}
+                            onClick={() => startEditing(fieldKey, field)}
                             className="opacity-0 group-hover/item:opacity-100 text-blue-400 hover:text-blue-600 transition-opacity p-1"
                             title="Edit"
                         >
@@ -348,7 +388,7 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
             </div>
             {!isEditing && (
                 <div className="ml-2 flex items-center h-full pt-1">
-                    {value ? (
+                    {displayValue ? (
                         <span className="text-green-600 font-bold">✓</span>
                     ) : (
                         required ? <span className="text-red-500 font-bold">✕</span> : <span className="text-gray-300">-</span>
@@ -461,7 +501,7 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
                                  </div>
                               )}
 
-                              {/* STEP 4: EDITABLE LIST */}
+                              {/* STEP 4: EDITABLE LIST (UPDATED RENDER) */}
                               {step.id === 4 && step.ocrResult && step.ocrResult.details && (
                                 <div className="space-y-2 bg-white p-2 rounded border border-gray-100">
                                     <div className="flex justify-between items-center mb-2">
@@ -541,7 +581,7 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
 
                 <div className="pt-4 mt-auto border-t border-gray-100 flex flex-col gap-3">
                     
-                    {/* BUTTON 1: Expand/Collapse All (Swapped position to top) */}
+                    {/* BUTTON 1: Expand/Collapse All */}
                     <button 
                         onClick={handleToggleAll}
                         className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 w-full font-medium transition-colors"
@@ -549,7 +589,7 @@ export default function AuditProjectPage({ params }: { params: { auditId: string
                         {expandedStepIds.length === steps.length ? 'ย่อทั้งหมด (Collapse All)' : 'ขยายทั้งหมด (Expand All)'}
                     </button>
 
-                    {/* BUTTON 2: Summarize (Swapped position to bottom, Renamed) */}
+                    {/* BUTTON 2: Summarize */}
                     <button 
                         onClick={handleSaveToDatabase}
                         disabled={isSaving || !currentFile}
