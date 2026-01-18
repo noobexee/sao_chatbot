@@ -3,7 +3,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.documents import Document
-from src.app.llm_base.typhoon import TyphoonLLM
+from src.app.llm.typhoon import TyphoonLLM
 from src.app.chatbot.schemas import RAGResponse
 from src.app.chatbot.retriever import Retriever
 from src.db.repositories.chat_repository import ChatRepository

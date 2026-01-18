@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from src.api.v1.merger.doc_manage import find_doc_dir_by_id
-from src.app.llm_base.gemini import GeminiLLM
+from src.app.llm.gemini import GeminiLLM
 from pathlib import Path
 import json
 import uuid

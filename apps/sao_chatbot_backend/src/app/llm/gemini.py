@@ -2,7 +2,7 @@ from typing import List, Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from src.config import settings
-from src.app.llm_base.base import BaseLLM
+from src.app.llm.base import BaseLLM
 
 
 class GeminiLLM(BaseLLM):
