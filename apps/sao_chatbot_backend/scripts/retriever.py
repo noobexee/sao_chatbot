@@ -138,7 +138,7 @@ class Retriever:
         
         analysis_result = await self.generate_search_queries(user_query, history)
         
-        search_queries = analysis_result.get("rewritten_query", "")
+        search_queries = [analysis_result.get("rewritten_query", "")]
         extracted_date = analysis_result.get("search_date")
         law_name_filter = analysis_result.get("law_name")
         doc_type_filter = analysis_result.get("doc_type")
@@ -153,20 +153,20 @@ class Retriever:
                 doc_type=doc_type_filter
             )
             if law_name_filter or doc_type_filter:
-                print(f"🎯 Sniper Filter Active: Law='{law_name_filter}', Type='{doc_type_filter}'")
+                print(f"Sniper Filter Active: Law='{law_name_filter}', Type='{doc_type_filter}'")
         except ValueError as e:
-            print(f"⚠️ Filter Error: {e}")
+            print(f"Filter Error: {e}")
             time_filter = None
 
         all_docs = []
         
-        print(f"🧠 Searching: {search_queries} @ {final_date}")
+        print(f"Searching: {search_queries} @ {final_date}")
         for query in search_queries:
             docs = self.vectorstore.similarity_search(
                 query, 
                 k=k, 
-                alpha=0.6,
-                filters=time_filter 
+                alpha=0.5,
+                filters=time_filter
             )
             all_docs.extend(docs)
 
@@ -180,7 +180,7 @@ class Retriever:
 
 
 async def main():
-    query = "การคัดเลือกเรื่องที่มาจากการประเมินความเสี่ยงต้องทำอย่างไร"
+    query = "เรื่องที่มาจากการ้องเรียนมีที่มาจากอะไรบ้าง"
     
     load_dotenv()
     retriever = Retriever()
@@ -194,8 +194,12 @@ async def main():
                 law_name = doc.metadata.get("law_name", "N/A")
                 valid_from = doc.metadata.get("valid_from", "N/A")
                 valid_until = doc.metadata.get("valid_until", "N/A")
+                doc_type = doc.metadata.get("doc_type", "N/A")
                 
                 print(f"{i} Law name: {law_name}")
+                print(f"{i} valid_from: {valid_from}")
+                print(f"{i} valid_until: {valid_until}")
+                print(f"{i} doc_type: {doc_type}")
                 print(f"Content: {doc.page_content}") 
                 print("-" * 60)
         else:

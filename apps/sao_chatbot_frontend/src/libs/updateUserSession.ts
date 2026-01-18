@@ -1,9 +1,12 @@
+import { getBaseUrl } from "./config";
+
 export async function updateSession(
   userId: string, 
   sessionId: string, 
   updates: { title?: string; is_pinned?: boolean }
 ) {
-  const url = `${process.env.NEXT_PUBLIC_RAG_API_URL}/api/v1/chatbot/sessions/${userId}/${sessionId}`;
+  const baseUrl = getBaseUrl()
+  const url = `${baseUrl}/api/v1/chatbot/sessions/${userId}/${sessionId}`;
   
   try {
     const response = await fetch(url, {

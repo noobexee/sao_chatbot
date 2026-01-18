@@ -1,12 +1,15 @@
+import { getBaseUrl } from "./config";
+
 export default async function sendMessage(userId: string, sessionId: string, message: string) {
+  const baseUrl = getBaseUrl()
+  console.log(baseUrl)
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_RAG_API_URL}/api/v1/chatbot/query`, {
+    const response = await fetch(`${baseUrl}/api/v1/chatbot/query`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        // Backend expects integer for user_id, ensuring conversion
         user_id: parseInt(userId),
         session_id: sessionId,
         query: message,

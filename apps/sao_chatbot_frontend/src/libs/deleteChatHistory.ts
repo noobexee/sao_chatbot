@@ -1,5 +1,8 @@
+import { getBaseUrl } from "./config";
+
 export default async function deleteChatHistory(user_id: string, session_id: string) {
-  const url = `${process.env.NEXT_PUBLIC_RAG_API_URL}/api/v1/chatbot/sessions/${user_id}/${session_id}`;
+  const baseUrl = getBaseUrl()
+  const url = `${baseUrl}/api/v1/chatbot/sessions/${user_id}/${session_id}`;
   
   try {
     const response = await fetch(url, {

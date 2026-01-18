@@ -7,7 +7,7 @@ load_dotenv()
 def create_user():
     db_url = os.getenv("SQL_DATABASE_URL")
     if not db_url:
-        print("❌ Error: DATABASE_URL is missing from .env")
+        print("Error: DATABASE_URL is missing from .env")
         return
 
     try:
@@ -21,7 +21,7 @@ def create_user():
         existing_user = cur.fetchone()
 
         if existing_user:
-            print(f"⚠️  User '{TEST_USERNAME}' already exists (ID: {existing_user[0]}). Skipping creation.")
+            print(f"User '{TEST_USERNAME}' already exists (ID: {existing_user[0]}). Skipping creation.")
         else:
 
             insert_query = """
@@ -34,13 +34,13 @@ def create_user():
             conn.commit()
             
             new_id = cur.fetchone()[0]
-            print(f"✅ Success! Created user.")
+            print(f"Success! Created user.")
             print(f"   ID: {new_id}")
             print(f"   Username: {TEST_USERNAME}")
             print(f"   Password: {TEST_PASSWORD}")
 
     except Exception as e:
-        print(f"❌ Database Error: {e}")
+        print(f"Database Error: {e}")
     finally:
         if 'conn' in locals() and conn:
             cur.close()
