@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from src.api.v1.models.chatbot import UpdateSessionRequest
 from src.api.v1.models import APIResponse
 from src.app.chatbot.chatbot import chatbot
