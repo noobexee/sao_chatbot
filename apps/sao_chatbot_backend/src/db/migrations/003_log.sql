@@ -6,8 +6,9 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS audit_sessions (
     audit_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id INTEGER, -- Link to your existing users table if needed
-    file_name TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    file_name TEXT,  
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    file_data BYTEA
 );
 
 -- 2. Audit Feedback Logs Table

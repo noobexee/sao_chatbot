@@ -1,20 +1,16 @@
 import json
-import os
-from google import genai
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
+from src.config import settings
+from src.app.llm.gemini import GeminiLLM
 
 # --- MOCK MODE CONFIGURATION ---
 USE_MOCK_AI = False  # Set to True to save API quota, False to use real Gemini
 
-api_key = os.getenv("GEMINI_API_KEY")
+api_key = settings.GEMINI_API_KEY
 if not USE_MOCK_AI and not api_key:
     print("WARNING: GEMINI_API_KEY not found.")
 
 if not USE_MOCK_AI:
-    client = genai.Client(api_key=api_key)
+    client = GeminiLLM
 else:
     client = None
     print("⚠️ RUNNING IN MOCK AI MODE")
@@ -27,7 +23,7 @@ class AuditAgents:
 
         try:
             full_prompt = f"{system_prompt}\n\nเอกสารที่ต้องตรวจสอบ:\n{user_text}"
-            response = client.models.generate_content(
+            response = client.invoke(
                 model='gemini-2.5-flash',
                 contents=full_prompt,
                 config={
@@ -64,31 +60,23 @@ class AuditAgents:
         - หากพบหลายเหตุการณ์ ให้สรุปรวมเป็นข้อความเดียวในแต่ละ field
         
         ให้ดึงข้อมูลดังต่อไปนี้ออกมา (ถ้าไม่พบให้ใส่ null):
-        1. **ชื่อหน่วยรับตรวจ (Entity):** ต้องเป็นชื่อหน่วยงานที่ชัดเจน (เช่น "เทศบาลตำบล ก.", "โรงเรียนวัด...", "กรมทางหลวง") 
-           - *ห้าม* ตอบคำลอยๆ เช่น "เทศบาลแห่งหนึ่ง", "หน่วยงานราชการ", "อบต." ถ้าไม่ระบุชื่อเฉพาะให้ถือว่า null
-        2. **พฤติการณ์ (Behavior):** การกระทำที่ถูกกล่าวหา (เช่น "ทุจริตจัดซื้อ", "นำรถหลวงไปใช้ส่วนตัว")
-        3. **เจ้าหน้าที่ผู้ถูกร้อง (Official):** ชื่อ-นามสกุล หรือตำแหน่งที่ระบุตัวตนได้ชัดเจน ของผู้ที่ถูกกล่าวหา
-            - *ต้องเป็นชื่อเฉพาะบุคคลเท่านั้น* ต้องมีคำนำหน้า (นาย, นาง, นางสาว, ยศ) ตามด้วยชื่อและนามสกุลจริง
-            - *ห้าม* นับนามแฝงหรือชื่อสมมติ เช่น "พลเมืองดี", "ผู้หวังดี", "ชาวบ้าน", "ข้าราชการชั้นผู้น้อย" เป็นชื่อคนเด็ดขาด
-            - *ห้าม* นับนามแฝงหรือชื่อสมมติ เช่น "พลเมืองดี", "ผู้หวังดี", "ชาวบ้าน", "ข้าราชการชั้นผู้น้อย" เป็นชื่อคนเด็ดขาด
+        1. **ชื่อหน่วยรับตรวจ (Entity):** ชื่อหน่วยงานที่ชัดเจน
+        2. **พฤติการณ์ (Behavior):** การกระทำที่ถูกกล่าวหา
+        3. **เจ้าหน้าที่ผู้ถูกร้อง (Official):** ชื่อ-นามสกุล หรือตำแหน่ง
         4. **วันเวลา (Date):** ช่วงเวลาที่เกิดเหตุ
-        5. **สถานที่ (Location):** สถานที่เกิดเหตุ (จังหวัด, อำเภอ หรือสถานที่เกิดเหตุ)
+        5. **สถานที่ (Location):** สถานที่เกิดเหตุ
         
-        **เกณฑ์การตัดสิน (Status):**
-        - "success": ถ้าพบ (Entity และ Behavior และ Official) ครบถ้วน
-        - "fail": ถ้าขาด Entity หรือ Behavior หรือ Officialอย่างใดอย่างหนึ่ง
-
         ตอบกลับเป็น JSON Structure นี้เท่านั้น:
         {
             "status": "success" หรือ "fail", 
-            "title": "ข้อสรุปสั้นๆ (ภาษาไทย)",
-            "reason": "เหตุผลประกอบ (ระบุว่าพบหรือขาดอะไร)",
+            "title": "ข้อสรุปสั้นๆ",
+            "reason": "เหตุผลประกอบ",
             "details": {
-                "entity": "ชื่อหน่วยงานเฉพาะเจาะจง หรือ null",
-                "behavior": "พฤติการณ์ หรือ null",
-                "official": "ชื่อ/ตำแหน่งผู้ถูกร้อง หรือ null",
-                "date": "วันเวลา หรือ null",
-                "location": "สถานที่ หรือ null"
+                "entity": "...",
+                "behavior": "...",
+                "official": "...",
+                "date": "...",
+                "location": "..."
             }
         }
         """

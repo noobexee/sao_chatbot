@@ -1,4 +1,6 @@
-from fastapi import FastAPI, UploadFile, File, Body
+from fastapi import FastAPI, UploadFile, File, Form, Body, HTTPException
+from fastapi.responses import StreamingResponse
+import io
 from fastapi.middleware.cors import CORSMiddleware
 from services import typhoon_service
 from agents import audit_agents
@@ -19,12 +21,65 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Analyze Endpoint (Async) ---
+# --- 1. Upload Document Endpoint (ใช้แทน save_audit เดิม) ---
+@app.post("/upload_document")
+async def upload_document(file: UploadFile = File(...)):
+    # ... (โค้ดเดิม) ...
+    try:
+        file_content = await file.read()
+        audit_id = str(uuid.uuid4())
+        file_name = file.filename or "unknown_file"
+        repo = AuditRepository()
+        success = repo.save_audit_session(audit_id, file_name, file_content)
+        if success:
+            return {"status": "success", "audit_id": audit_id}
+        raise HTTPException(status_code=500, detail="Failed DB")
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# --- ✅ [NEW] Endpoint ดึงชื่อไฟล์ ---
+@app.get("/audit/{audit_id}/info")
+def get_audit_info(audit_id: str):
+    repo = AuditRepository()
+    info = repo.get_audit_summary(audit_id)
+    if not info:
+        raise HTTPException(status_code=404, detail="Audit ID not found")
+    return {"status": "success", "data": info}
+
+# --- ✅ [NEW] Endpoint ดึงรูปภาพ/PDF ---
+@app.get("/audit/{audit_id}/file")
+def get_audit_file(audit_id: str):
+    repo = AuditRepository()
+    
+    # 1. ดึงข้อมูลชื่อไฟล์ก่อนเพื่อหาประเภทไฟล์
+    info = repo.get_audit_summary(audit_id)
+    if not info:
+         raise HTTPException(status_code=404, detail="Audit ID not found")
+    
+    file_name = info.get("file_name", "document.pdf")
+    
+    # 2. ดึงเนื้อไฟล์ Binary
+    file_content = repo.get_audit_file_content(audit_id)
+    if not file_content:
+        raise HTTPException(status_code=404, detail="File content missing")
+
+    # 3. กำหนด Media Type
+    media_type = "application/octet-stream"
+    if file_name.lower().endswith(".pdf"):
+        media_type = "application/pdf"
+    elif file_name.lower().endswith((".png", ".jpg", ".jpeg")):
+        media_type = "image/jpeg"
+
+    # 4. ส่งกลับเป็น Stream
+    return StreamingResponse(io.BytesIO(file_content), media_type=media_type)
+
+# --- 2. Analyze Endpoint (สำหรับวิเคราะห์ AI) ---
 @app.post("/analyze")
 async def analyze_document(file: UploadFile = File(...)):
     temp_path = f"temp_uploads/{file.filename}"
     
     try:
+        # บันทึกไฟล์ชั่วคราวเพื่อส่งให้ OCR
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
@@ -38,7 +93,7 @@ async def analyze_document(file: UploadFile = File(...)):
         
         step4_ai_result, step6_ai_result = await asyncio.gather(step4_task, step6_task)
 
-        # Process Results
+        # Process Results (Logic เดิมของคุณ)
         if step4_ai_result:
             step4_response = {
                 "status": step4_ai_result.get("status", "fail"),
@@ -79,72 +134,28 @@ async def analyze_document(file: UploadFile = File(...)):
             os.remove(temp_path)
         return {"status": "error", "message": str(e)}
 
-# --- Save Session Endpoint (Auto UUID) ---
-@app.post("/save_audit")
-def save_audit(data: dict = Body(...)):
-    """
-    Saves only the audit session.
-    - If 'audit_id' is NOT provided, it generates a new UUID.
-    - Returns 'audit_id' so the frontend can save it.
-    """
-    print("\n--- [API] /save_audit Called ---")
-    audit_id = data.get("audit_id")
-    file_name = data.get("file_name", "unknown_file")
-    
-    print(f"Received Payload: audit_id={audit_id}, file_name={file_name}")
-
-    # --- AUTO GENERATE UUID IF MISSING ---
-    if not audit_id:
-        audit_id = str(uuid.uuid4())
-        print(f"🔹 Generated New Audit ID: {audit_id}")
-    
-    repo = AuditRepository()
-    try:
-        success = repo.save_audit_session(audit_id, file_name)
-        if success:
-            print(f"✅ [API] Success: Session {audit_id} saved.")
-            return {
-                "status": "success", 
-                "message": "Session saved", 
-                "audit_id": audit_id
-            }
-        else:
-            print(f"❌ [API] Failed: Could not save session {audit_id}")
-            return {"status": "error", "message": "Failed to save session"}
-    except Exception as e:
-        print(f"❌ [API] Error: {e}")
-        return {"status": "error", "message": str(e)}
-
-# --- Save AI Result Endpoint ---
+# --- 3. Save AI Result Endpoint ---
 @app.post("/save_ai_result")
 def save_ai_result(data: dict = Body(...)):
     """
-    บันทึกผลลัพธ์จาก AI
-    Expects: { "audit_id": "...", "step_id": 4, "result": ... }
+    บันทึกผลลัพธ์จาก AI (รับ JSON ปกติ)
     """
     print("\n--- [API] /save_ai_result Called ---")
     audit_id = data.get("audit_id")
     step_id = data.get("step_id")
     result = data.get("result", {})
 
-    print(f"Received Payload: audit_id={audit_id}, step_id={step_id}")
-    # print(f"Result Data: {result}") # Uncomment if you want to see the full JSON
-
     if not audit_id or not step_id:
-        print("❌ [API] Error: Missing audit_id or step_id")
         return {"status": "error", "message": "Missing audit_id or step_id"}
 
     repo = AuditRepository()
     try:
         success = repo.save_step_log(audit_id, int(step_id), result)
         if success:
-            print(f"✅ [API] Success: Step {step_id} logs saved for {audit_id}")
             return {"status": "success", "message": f"Step {step_id} data saved"}
         else:
-            print(f"❌ [API] Failed: Could not save logs for {audit_id}")
             return {"status": "error", "message": "Failed to save data"}
     except Exception as e:
-        print(f"❌ [API] Error: {e}")
         return {"status": "error", "message": str(e)}
 
 if __name__ == "__main__":

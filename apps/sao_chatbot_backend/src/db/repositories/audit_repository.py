@@ -1,6 +1,5 @@
-import psycopg2
 import json
-from db import get_db_connection
+from src.db.connection import get_db_connection
 
 class AuditRepository:
     
@@ -29,7 +28,6 @@ class AuditRepository:
             raise e
         finally:
             if conn: conn.close()
-
     def save_step_log(self, audit_id: str, step_id: int, ai_result: dict, feedback: str = None) -> bool:
         """
         Save ONLY the AI output data for a specific step to audit_feedback_logs.
@@ -140,7 +138,7 @@ class AuditRepository:
         try:
             conn = get_db_connection()
             cur = conn.cursor()
-            query = "SELECT audit_id, file_name, created_at FROM audit_sessions WHERE audit_id = %s"
+            query = "SELECT * FROM audit_sessions WHERE audit_id = %s"
             cur.execute(query, (audit_id,))
             row = cur.fetchone()
             cur.close()

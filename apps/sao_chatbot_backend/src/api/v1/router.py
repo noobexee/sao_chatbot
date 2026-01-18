@@ -1,10 +1,10 @@
 from fastapi import APIRouter
 from src.api.v1.chatbot.router import chatbot_router
 from src.api.v1.merger.router import merger_router
-# from api.v1.audit.router import router as audit_router
+from api.v1.audit.router import audit_router
 
 api_router = APIRouter()
 
 api_router.include_router(chatbot_router, prefix="/chatbot", tags=["Chatbot"])
 api_router.include_router(merger_router, prefix="/merger", tags=["Merger"])
-# api_router.include_router(audit_router, prefix="/audit", tags=["Audit"])
+api_router.include_router(audit_router, prefix="/audit", tags=["Audit"])
