@@ -21,8 +21,6 @@ __pycache__/
 .env.*
 
 # --- Data & Databases ---
-# These are stateful and should be mounted as volumes,
-# not built into the image.
 /data/
 /vector_store/
 *.sqlite
