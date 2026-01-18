@@ -1,8 +1,8 @@
 from fastapi import APIRouter
-from api.v1.merger.doc_manage import doc_manage_router
-from api.v1.merger.merger import merger_router
+from src.api.v1.merger.doc_manage import router as doc_router
+from src.api.v1.merger.merger import router as merge_router
 
-router = APIRouter()
+merger_router = APIRouter()
 
-router.include_router(doc_manage_router)
-router.include_router(merger_router)
+merger_router.include_router(doc_router)
+merger_router.include_router(merge_router)

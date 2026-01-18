@@ -1,6 +1,6 @@
-import fitz 
+import fitz
 import tempfile
-from typing import List
+from typing import List, Callable
 from langchain_core.documents import Document
 from langchain_community.document_loaders.base import BaseLoader
 from typhoon_ocr import ocr_document
@@ -8,10 +8,16 @@ from src.config import settings
 
 
 class TyphoonOCRLoader(BaseLoader):
-    def __init__(self, file_path: str, api_key: str = None):
+    def __init__(
+        self,
+        file_path: str,
+        api_key: str = None,
+        progress_cb: Callable[[int, int], None] | None = None,
+    ):
         self.file_path = file_path
         self.api_key = api_key or settings.TYPHOON_API_KEY
-        
+        self.progress_cb = progress_cb
+
         if not self.api_key:
             raise ValueError("Typhoon API Key is missing")
 
@@ -20,19 +26,22 @@ class TyphoonOCRLoader(BaseLoader):
         print(f"[Typhoon OCR] Starting: {file_name}")
 
         documents = []
-        
+
         try:
             doc = fitz.open(self.file_path)
             total_pages = len(doc)
             print(f"Found {total_pages} pages. Processing page by page...")
 
-            for page_num, page in enumerate(doc):
-                real_page_num = page_num + 1
-                print(f"Processing Page {real_page_num}/{total_pages}...")
+            for page_num, page in enumerate(doc, start=1):
+                if self.progress_cb:
+                    self.progress_cb(page_num, total_pages)
+
+                print(f"Processing Page {page_num}/{total_pages}...")
                 pix = page.get_pixmap(dpi=300)
-                
+
                 with tempfile.NamedTemporaryFile(suffix=".jpg", delete=True) as temp_img:
                     pix.save(temp_img.name)
+
                     try:
                         markdown_text = ocr_document(
                             pdf_or_image_path=temp_img.name,
@@ -40,17 +49,21 @@ class TyphoonOCRLoader(BaseLoader):
                             base_url="https://api.opentyphoon.ai/v1",
                             model="typhoon-ocr"
                         )
-                        
+
                         if markdown_text:
-                            meta = {
-                                "source": self.file_path,
-                                "page": real_page_num,  
-                                "engine": "typhoon-ocr"
-                            }
-                            documents.append(Document(page_content=markdown_text, metadata=meta))
-                            
+                            documents.append(
+                                Document(
+                                    page_content=markdown_text,
+                                    metadata={
+                                        "source": self.file_path,
+                                        "page": page_num,
+                                        "engine": "typhoon-ocr",
+                                    }
+                                )
+                            )
+
                     except Exception as e:
-                        print(f"Error on Page {real_page_num}: {e}")
+                        print(f"Error on Page {page_num}: {e}")
 
             doc.close()
             print(f"Finished {file_name}. Extracted {len(documents)} valid pages.")
