@@ -10,15 +10,14 @@ services:
       - ./apps/sao_chatbot_backend/.env 
     networks:
       - app-net
-      - db-net
 
   frontend:
     build:
       context: ./apps/sao_chatbot_frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_RAG_API_URL: "http://localhost:8000"
-        INTERNAL_API_URL: "http://backend:8000"
+        NEXT_PUBLIC_RAG_API_URL: "${NEXT_PUBLIC_RAG_API_URL}"
+        INTERNAL_API_URL: "${INTERNAL_API_URL}"
     restart: always
     ports:
       - "${FRONTEND_PORT}:${FRONTEND_PORT}"
@@ -32,8 +31,5 @@ services:
 networks:
   app-net:
     driver: bridge
-  db-net:
-    external: true 
-    name: sao_chatbot_db-net
 
   

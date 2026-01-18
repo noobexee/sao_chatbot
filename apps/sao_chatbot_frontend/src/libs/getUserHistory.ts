@@ -1,6 +1,8 @@
+import { getBaseUrl } from "./config"
+
 export default async function getUserHistory(user_id : string) {
-    console.log(`${process.env.NEXT_PUBLIC_RAG_API_URL}/api/v1/sessions/${user_id}`)
-    const response = await fetch(`${process.env.NEXT_PUBLIC_RAG_API_URL}/api/v1/chatbot/sessions/${user_id}`) 
+    const baseUrl = getBaseUrl()
+    const response = await fetch(`${baseUrl}/api/v1/chatbot/sessions/${user_id}`) 
     if(!response.ok) {
         throw new Error("Failed to fetch history")
     }
