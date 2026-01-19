@@ -1,37 +1,40 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useParams } from "next/navigation";
 import { getDocuments, Doc } from "@/libs/doc_manage/getDocuments";
 
-export default function MergerLayout({ children }: { children: React.ReactNode }) {
+export default function MergerLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [docs, setDocs] = useState<Doc[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const params = useParams();
+  const params = useParams<{ doc_id?: string }>();
+  const loadDocuments = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await getDocuments();
+      setDocs(data);
+      setError(null);
+    } catch {
+      setError("ไม่สามารถโหลดรายการเอกสารได้");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true);
-        const data = await getDocuments();
-        setDocs(data);
-      } catch {
-        setError("ไม่สามารถโหลดรายการเอกสารได้");
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
+    loadDocuments();
+  }, [loadDocuments, params?.doc_id]);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-white text-[#1e293b]">
-      {/* SIDEBAR */}
       <aside
         className={`flex flex-col border-r border-gray-100 bg-[#f8f9fa] shrink-0 transition-all duration-300 ease-in-out
         ${isSidebarOpen ? "w-[280px]" : "w-0 border-none"}`}
@@ -39,7 +42,6 @@ export default function MergerLayout({ children }: { children: React.ReactNode }
         <div className="flex items-center justify-between p-5 pb-2 whitespace-nowrap">
           <h1 className="text-xl font-bold">Document Manager</h1>
         </div>
-
         <div className="px-2 py-2">
           <Link href="/merger/new">
             <div className="cursor-pointer flex w-full items-center gap-3 rounded-full bg-[#dfe1e5] px-4 py-3 hover:bg-gray-300">
@@ -47,22 +49,23 @@ export default function MergerLayout({ children }: { children: React.ReactNode }
             </div>
           </Link>
         </div>
-
         <div className="flex-1 overflow-y-auto px-3 py-2">
           <h2 className="mb-2 text-xs font-medium text-gray-500 px-2">
             Documents
           </h2>
-
           {loading && <p className="px-4 text-xs text-gray-500">กำลังโหลด…</p>}
           {error && <p className="px-4 text-xs text-red-500">{error}</p>}
-
           <div className="space-y-1 pb-10">
             {docs.map((doc) => (
               <Link
                 key={doc.id}
                 href={`/merger/${doc.id}/view`}
                 className={`group block rounded-full px-4 py-2 hover:bg-[#e8eaed] transition-colors
-                  ${params?.doc_id === doc.id ? "bg-[#e8eaed] font-semibold" : ""}`}
+                  ${
+                    params?.doc_id === doc.id
+                      ? "bg-[#e8eaed] font-semibold"
+                      : ""
+                  }`}
               >
                 <p className="truncate text-sm text-gray-700">{doc.title}</p>
                 <p className="truncate text-xs text-gray-400">
@@ -73,8 +76,6 @@ export default function MergerLayout({ children }: { children: React.ReactNode }
           </div>
         </div>
       </aside>
-
-      {/* MAIN */}
       <main className="flex flex-1 flex-col relative h-full w-full bg-white">
         <header className="flex h-16 w-full items-center justify-between border-b border-gray-100 bg-white px-4 shrink-0 z-50">
           <div className="flex items-center gap-2">
@@ -84,14 +85,12 @@ export default function MergerLayout({ children }: { children: React.ReactNode }
             >
               ☰
             </button>
-
             <Link href="/chatbot">
               <div className="rounded-full border px-4 py-2 text-sm hover:bg-gray-50">
                 Chatbot
               </div>
             </Link>
           </div>
-
           <div className="relative h-10 w-10 overflow-hidden rounded-full border bg-gray-100">
             <Image
               src="/user-placeholder.jpg"
@@ -103,7 +102,6 @@ export default function MergerLayout({ children }: { children: React.ReactNode }
             <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-white" />
           </div>
         </header>
-
         <div className="flex-1 relative w-full overflow-hidden">
           {children}
         </div>

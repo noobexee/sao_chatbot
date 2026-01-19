@@ -1,4 +1,4 @@
-const BASE_URL = "http://127.0.0.1:8000/api/v1/merger";
+import { getBaseUrl } from "../config";
 
 export type PreviewFile = {
   type: "pdf";
@@ -8,7 +8,7 @@ export type PreviewFile = {
 export async function getDocOriginalPreview(
   docId: string
 ): Promise<PreviewFile> {
-  const res = await fetch(`${BASE_URL}/doc/${docId}/original`, {
+  const res = await fetch(`${getBaseUrl()}/api/v1/merger/doc/${docId}/original`, {
     cache: "no-store",
   });
 

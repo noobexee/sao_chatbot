@@ -1,11 +1,9 @@
-// app/merger/api/getDocOriginal.ts
-
-const BASE_URL = "http://127.0.0.1:8000/api/v1/merger";
+import { getBaseUrl } from "../config";
 
 export async function checkHasPdf(docId: string): Promise<boolean> {
   try {
     const res = await fetch(
-      `${BASE_URL}/doc/${docId}/original`
+      `${getBaseUrl()}/api/v1/merger/doc/${docId}/original`
     );
     return res.ok;
   } catch {
@@ -14,5 +12,5 @@ export async function checkHasPdf(docId: string): Promise<boolean> {
 }
 
 export function getDocOriginalUrl(docId: string): string {
-  return `${BASE_URL}/doc/${docId}/original`;
+  return `${getBaseUrl()}/api/v1/merger/doc/${docId}/original`;
 }

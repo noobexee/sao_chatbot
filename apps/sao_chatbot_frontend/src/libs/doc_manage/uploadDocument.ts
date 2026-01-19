@@ -1,12 +1,10 @@
-// app/merger/api/uploadDocument.ts
-
-const BASE_URL = "http://127.0.0.1:8000/api/v1/merger";
+import { getBaseUrl } from "../config";
 
 export interface UploadPayload {
   type: string;
   title?: string;
   version?: string;
-  valid_from?: string;
+  valid_from?: string;  // DD-MM-YYYY or ISO (backend decides)
   valid_until?: string;
   file: File;
 }
@@ -22,7 +20,8 @@ export interface UploadResponse {
 }
 
 export async function uploadDocument(
-  payload: UploadPayload
+  payload: UploadPayload,
+  signal?: AbortSignal
 ): Promise<UploadResponse> {
   const formData = new FormData();
 
@@ -33,15 +32,21 @@ export async function uploadDocument(
   if (payload.valid_until) formData.append("valid_until", payload.valid_until);
   formData.append("file", payload.file);
 
-  const res = await fetch(`${BASE_URL}/doc`, {
+  const res = await fetch(`${getBaseUrl()}/api/v1/merger/doc`, {
     method: "POST",
     body: formData,
+    cache: "no-store",
+    signal,
   });
-
   if (!res.ok) {
-    const msg = await res.text();
-    throw new Error(msg || "Upload failed");
+    let message = "Upload failed";
+    try {
+      const data = await res.json();
+      message = data.detail ?? JSON.stringify(data);
+    } catch {
+      message = await res.text();
+    }
+    throw new Error(message);
   }
-
   return res.json();
 }

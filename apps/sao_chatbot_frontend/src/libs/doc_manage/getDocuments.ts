@@ -1,3 +1,5 @@
+import { getBaseUrl } from "../config";
+
 export interface Doc {
   id: string;
   title: string;
@@ -10,10 +12,8 @@ export interface Doc {
   status: string;
 }
 
-const BASE_URL = "http://127.0.0.1:8000/api/v1/merger";
-
 export async function getDocuments(): Promise<Doc[]> {
-  const res = await fetch(`${BASE_URL}/doc`, {
+  const res = await fetch(`${getBaseUrl()}/api/v1/merger/doc`, {
     cache: "no-store",
   });
 

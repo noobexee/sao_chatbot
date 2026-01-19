@@ -1,19 +1,48 @@
-const BASE_URL = "http://127.0.0.1:8000/api/v1/merger";
+import { getBaseUrl } from "../config";
+
+export interface SaveDocTextPayload {
+  content: string;
+  title?: string;
+  valid_from?: string;   // ISO or DD-MM-YYYY (backend parses date)
+  valid_until?: string;
+  version?: string;
+}
 
 export async function saveDocText(
   docId: string,
-  content: string
+  payload: SaveDocTextPayload
 ): Promise<void> {
   const form = new FormData();
-  const blob = new Blob([content], { type: "text/plain" });
+  const blob = new Blob([payload.content], { type: "text/plain" });
   form.append("file", blob, "text.txt");
-
-  const res = await fetch(`${BASE_URL}/doc/${docId}/text`, {
-    method: "POST",
-    body: form,
-  });
-
+  if (payload.title !== undefined) {
+    form.append("title", payload.title);
+  }
+  if (payload.valid_from !== undefined) {
+    form.append("valid_from", payload.valid_from);
+  }
+  if (payload.valid_until !== undefined) {
+    form.append("valid_until", payload.valid_until);
+  }
+  if (payload.version !== undefined) {
+    form.append("version", payload.version);
+  }
+  const res = await fetch(
+    `${getBaseUrl()}/api/v1/merger/doc/${docId}/text`,
+    {
+      method: "PUT",
+      body: form,
+      cache: "no-store",
+    }
+  );
   if (!res.ok) {
-    throw new Error("Failed to save cleaned text");
+    let message = "Failed to save cleaned text";
+    try {
+      const data = await res.json();
+      message = data.detail ?? JSON.stringify(data);
+    } catch {
+      message = await res.text();
+    }
+    throw new Error(message);
   }
 }

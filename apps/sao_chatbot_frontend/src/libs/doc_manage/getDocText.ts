@@ -1,9 +1,8 @@
-// app/merger/api/getDocText.ts
+import { getBaseUrl } from "../config";
 
-const BASE_URL = "http://127.0.0.1:8000/api/v1/merger";
 
 export async function getDocText(docId: string): Promise<string> {
-  const res = await fetch(`${BASE_URL}/doc/${docId}/text`, {
+  const res = await fetch(`${getBaseUrl()}/api/v1/merger/doc/${docId}/text`, {
     cache: "no-store",
   });
 
