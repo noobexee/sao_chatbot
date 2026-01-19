@@ -9,11 +9,12 @@ from sentence_transformers import CrossEncoder
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field 
 from weaviate.classes.query import Filter 
+from apps.sao_chatbot_backend.src.app.utils import time_execution
 from src.app.llm.typhoon import TyphoonLLM
 from src.db.vector_store import get_vectorstore
 from dotenv import load_dotenv
 
-
+load_dotenv()
 
 class SearchIntent(BaseModel):
     """Structure for the optimized legal search query."""
@@ -39,7 +40,7 @@ class Retriever:
         self.llm = TyphoonLLM().get_model()
         self.reranker = CrossEncoder('BAAI/bge-reranker-v2-m3', device='cpu')
         self.parser = PydanticOutputParser(pydantic_object=SearchIntent)
-
+    @time_execution
     async def generate_search_queries(self, user_query: str, history: List = None) -> Dict[str, Any]:
 
         if history is None:
@@ -74,7 +75,6 @@ class Retriever:
         {format_instructions}
         """
         
-        # ... rest of your code ...
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
             ("human", "ประวัติการสนทนา:\n{history}\n\nคำถาม: {input}")
@@ -101,6 +101,7 @@ class Retriever:
                 "doc_type": None,
                 "search_date": current_date
             }
+
     def _build_filters(self, search_date: str, law_name: str = None, doc_type: str = None):
         filters = []
         if "T" not in search_date:
@@ -126,6 +127,7 @@ class Retriever:
             
         return composite_filter
 
+    @time_execution
     def _rerank_documents(self, user_query: str, docs: List[Document], top_k: int = 3) -> List[Document]:
         if not docs: return []
         pairs = [[user_query, doc.page_content] for doc in docs]
@@ -134,11 +136,12 @@ class Retriever:
         doc_score_pairs.sort(key=lambda x: x[1], reverse=True)
         return [doc for doc, score in doc_score_pairs[:top_k]]
 
+    @time_execution
     async def retrieve(self, user_query: str, history: List = None, k: int = 5, search_date: str = None) -> List[Document]:
-        
+
         analysis_result = await self.generate_search_queries(user_query, history)
         
-        search_queries = [analysis_result.get("rewritten_query", "")]
+        search_queries = analysis_result.get("rewritten_query", "")
         extracted_date = analysis_result.get("search_date")
         law_name_filter = analysis_result.get("law_name")
         doc_type_filter = analysis_result.get("doc_type")
@@ -153,9 +156,9 @@ class Retriever:
                 doc_type=doc_type_filter
             )
             if law_name_filter or doc_type_filter:
-                print(f"Sniper Filter Active: Law='{law_name_filter}', Type='{doc_type_filter}'")
+                print(f"🎯 Sniper Filter Active: Law='{law_name_filter}', Type='{doc_type_filter}'")
         except ValueError as e:
-            print(f"Filter Error: {e}")
+            print(f"⚠️ Filter Error: {e}")
             time_filter = None
 
         all_docs = []
@@ -165,8 +168,8 @@ class Retriever:
             docs = self.vectorstore.similarity_search(
                 query, 
                 k=k, 
-                alpha=0.5,
-                filters=time_filter
+                alpha=0.6,
+                filters=time_filter 
             )
             all_docs.extend(docs)
 
@@ -177,6 +180,7 @@ class Retriever:
         final_docs = self._rerank_documents(user_query, unique_candidates, top_k=5)
 
         return final_docs
+
 
 
 async def main():

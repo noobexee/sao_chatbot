@@ -24,8 +24,8 @@ def run_migrations():
         conn.autocommit = True
         cur = conn.cursor()
         
-        print("🔌 Connected to PostgreSQL")
-        print(f"📂 Scanning for SQL files in: {migrations_dir}")
+        print("Connected to PostgreSQL")
+        print(f"Scanning for SQL files in: {migrations_dir}")
 
 
         files = sorted([f for f in os.listdir(migrations_dir) if f.endswith('.sql')])
@@ -34,7 +34,7 @@ def run_migrations():
             print("⚠️  No SQL files found in migrations directory.")
             return
 
-        print(f"📝 Found {len(files)} migration files.")
+        print(f"Found {len(files)} migration files.")
 
         for filename in files:
             file_path = os.path.join(migrations_dir, filename)
