@@ -3,6 +3,7 @@
 import React, { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAudit } from './audit-context';
+import { uploadDocument } from '../../libs/audit/uploadDocument';
 
 export default function AuditPage() {
   const [isDragging, setIsDragging] = useState(false);
@@ -37,12 +38,7 @@ export default function AuditPage() {
 
     try {
       // 3. ยิง API ไปที่ Backend
-      const response = await fetch("http://localhost:8000/upload_document", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await response.json();
+      const data = await uploadDocument(file);
 
       if (data.status === "success" && data.audit_id) {
         console.log("Upload Success, ID:", data.audit_id);

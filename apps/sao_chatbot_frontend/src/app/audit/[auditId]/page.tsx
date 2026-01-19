@@ -2,18 +2,20 @@
 
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
-import { useSearchParams, useParams } from "next/navigation"; 
-// ปรับ path นี้ให้ตรงกับไฟล์ audit-context ของคุณ
-import { useAudit } from "../audit-context"; 
+import { useSearchParams, useParams } from "next/navigation";
+import { useAudit } from "../audit-context";
 
-// --- Types Definition (เหมือนเดิม) ---
+// Import API Functions
+
+import { getAuditFile } from "../../../libs/audit/getAuditFile";
+import { analyzeDocument } from "../../../libs/audit/analyzeDocument";
+import { saveAiResult } from "../../../libs/audit/saveAIResult";
+
+// --- Types ---
 type StepStatus = "neutral" | "pending" | "success" | "fail";
 type FeedbackType = "up" | "down" | null;
 
-interface Person {
-  name: string;
-  role: string;
-}
+interface Person { name: string; role: string; }
 
 interface FieldData {
   value: string | null;      
@@ -53,56 +55,27 @@ interface AuditStep {
   };
 }
 
-// --- Initial Data ---
 const initialSteps: AuditStep[] = [
   { id: 1, label: "1. เป็นหน่วยรับตรวจที่อยู่ในสำนักตรวจสอบ", type: "auto", status: "neutral" },
   { id: 2, label: "2. เป็นเรื่องที่อยู่ในหน้าที่ของผู้ว่าการตรวจเงินแผ่นดิน", type: "auto", status: "neutral" },
-  {
-    id: 3,
-    label: "3. เป็นเรื่องที่เกิดขึ้นมาไม่เกิน 5 ปี นับตั้งแต่วันที่เกิดเหตุจนถึงวันที่สตง.ได้รับเรื่อง",
-    type: "manual",
-    status: "pending", 
-    options: [
-      { label: "เกิน", value: "fail" },
-      { label: "ไม่เกิน", value: "success" },
-      { label: "ไม่ระบุ", value: "fail" },
-    ],
-    selectedOption: null,
-  },
+  { id: 3, label: "3. เป็นเรื่องที่เกิดขึ้นมาไม่เกิน 5 ปี...", type: "manual", status: "pending", options: [{ label: "เกิน", value: "fail" }, { label: "ไม่เกิน", value: "success" }, { label: "ไม่ระบุ", value: "fail" }], selectedOption: null },
   { id: 4, label: "4. เป็นเรื่องที่ระบุรายละเอียดเพียงพอที่จะตรวจสอบได้", type: "auto", status: "neutral", isProcessing: false },
-  {
-    id: 5,
-    label: "5. เป็นเรื่องที่ผู้ว่าการหรือผู้ที่ผู้ว่าการมอบหมายให้ตรวจสอบแล้วยังไม่เคยแจ้งผลการตรวจสอบ",
-    type: "manual",
-    status: "pending",
-    options: [
-      { label: "เคย", value: "fail" },
-      { label: "ไม่เคย", value: "success" },
-    ],
-    selectedOption: null,
-  },
+  { id: 5, label: "5. เป็นเรื่องที่ผู้ว่าการ...", type: "manual", status: "pending", options: [{ label: "เคย", value: "fail" }, { label: "ไม่เคย", value: "success" }], selectedOption: null },
   { id: 6, label: "6. รายละเอียดของผู้ร้องเรียน", type: "auto", status: "neutral", isProcessing: false },
   { id: 7, label: "7. ไม่เป็นเรื่องร้องเรียนที่อยู่ระหว่างการดำเนินการของหน่วยงานอื่น", type: "auto", status: "neutral" },
   { id: 8, label: "8. เป็นเรื่องร้องเรียนที่อยู่ในอำนาจหน้าที่ขององค์กรอิสระอื่น", type: "auto", status: "neutral" },
 ];
 
-// ✅ เอา props ออก แล้วใช้ Hooks แทน
 export default function AuditProjectPage() {
-  
-  // 1. ใช้ Hooks เพื่อดึงค่า ID (แก้ปัญหา Next.js 15 Async Params)
   const params = useParams(); 
   const searchParams = useSearchParams();
   const { currentFile, setCurrentFile } = useAudit();
 
-  // ดึงค่า auditId จาก URL Path หรือ Query String
-  // params.auditId จะได้ค่าจากโฟลเดอร์ [auditId]
   const pathAuditId = params?.auditId as string;
-  
   const auditId = (pathAuditId && pathAuditId !== 'new-project') 
     ? pathAuditId 
     : searchParams.get('id');
 
-  // --- States ---
   const [isLoadingFile, setIsLoadingFile] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
   const [steps, setSteps] = useState<AuditStep[]>(initialSteps);
@@ -111,7 +84,7 @@ export default function AuditProjectPage() {
   const [editingField, setEditingField] = useState<keyof Step4Details | null>(null);
   const [tempEditValue, setTempEditValue] = useState("");
 
-  // --- 1. useEffect: กู้คืนไฟล์เมื่อ Refresh หน้า ---
+  // --- 1. Fetch File Logic ---
   useEffect(() => {
     const fetchFileFromDB = async () => {
         if (currentFile || !auditId) return;
@@ -120,37 +93,30 @@ export default function AuditProjectPage() {
         try {
             console.log(`🔄 Recovering file for ID: ${auditId}`);
 
-            // 1.1 ดึงข้อมูลชื่อไฟล์
-            const infoRes = await fetch(`http://localhost:8000/audit/${auditId}/info`);
-            const infoJson = await infoRes.json();
-            
-            if (infoJson.status !== 'success') throw new Error("Info fetch failed");
-            const fileName = infoJson.data.file_name;
+            // API Call 1: Get Info
+            //const infoJson = await getAuditInfo(auditId);
+            //if (infoJson.status !== 'success') throw new Error("Info fetch failed");
+            //const fileName = infoJson.data.file_name;
 
-            // 1.2 ดึงเนื้อไฟล์ Binary
-            const fileRes = await fetch(`http://localhost:8000/audit/${auditId}/file`);
-            if (!fileRes.ok) throw new Error("File binary fetch failed");
+            // API Call 2: Get File Blob
+            const blob = await getAuditFile(auditId);
             
-            const blob = await fileRes.blob();
-            
-            // 1.3 กำหนดประเภทไฟล์
             let type: 'image' | 'pdf' | 'other' = 'other';
             if (blob.type === 'application/pdf') type = 'pdf';
             else if (blob.type.startsWith('image/')) type = 'image';
 
-            // 1.4 สร้าง File Object
-            const fileObj = new File([blob], fileName, { type: blob.type });
-            const previewUrl = URL.createObjectURL(blob);
+            //const fileObj = new File([blob], fileName, { type: blob.type });
+            //const previewUrl = URL.createObjectURL(blob);
 
-            console.log("✅ File recovered:", fileName);
+            //console.log("✅ File recovered:", fileName);
 
-            setCurrentFile({
-                id: auditId,
-                fileObj: fileObj,
-                name: fileName,
-                type: type,
-                previewUrl: previewUrl
-            });
+            //setCurrentFile({
+            //    id: auditId,
+            //    fileObj: fileObj,
+            //    name: fileName,
+            //    type: type,
+            //    previewUrl: previewUrl
+            //});
 
         } catch (error) {
             console.error("❌ Error fetching file:", error);
@@ -170,15 +136,8 @@ export default function AuditProjectPage() {
     setSteps(prev => prev.map(step => (step.id === 4 || step.id === 6) ? { ...step, isProcessing: true } : step));
 
     try {
-        const formData = new FormData();
-        formData.append("file", currentFile.fileObj);
-
-        const response = await fetch("http://localhost:8000/analyze", {
-            method: "POST",
-            body: formData,
-        });
-
-        const result = await response.json();
+        // API Call 3: Analyze Document
+        const result = await analyzeDocument(currentFile.fileObj);
 
         if (result.status === "success") {
             const { step4, step6 } = result.data;
@@ -230,16 +189,11 @@ export default function AuditProjectPage() {
              resultData = { ...resultData, manual_selection: step.selectedOption, status: step.status };
           }
 
-          const aiPayload = {
+          // API Call 4: Save AI Result
+          await saveAiResult({
               audit_id: auditId,
               step_id: step.id,
               result: resultData
-          };
-          
-          await fetch("http://localhost:8000/save_ai_result", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(aiPayload),
           });
       }
 
@@ -280,7 +234,6 @@ export default function AuditProjectPage() {
     }
   };
 
-  // --- Edit Helpers ---
   const startEditing = (key: keyof Step4Details, field: FieldData) => { setEditingField(key); setTempEditValue(field.value || ""); };
   const cancelEdit = () => { setEditingField(null); setTempEditValue(""); };
   const saveEdit = (key: keyof Step4Details) => { 
@@ -419,7 +372,6 @@ export default function AuditProjectPage() {
 
                         {expandedStepIds.includes(step.id) && (
                            <div className="mt-2 ml-4 p-4 border-l-2 border-gray-200 bg-gray-50 rounded-r-md">
-                              {/* Manual Step */}
                               {step.type === "manual" && step.options && (
                                  <div className="space-y-2">
                                     <p className="text-xs font-bold text-gray-500 mb-2 uppercase">Manual Verification</p>
@@ -432,7 +384,6 @@ export default function AuditProjectPage() {
                                  </div>
                               )}
 
-                              {/* Step 4: Editable */}
                               {step.id === 4 && step.ocrResult && step.ocrResult.details && (
                                 <div className="space-y-2 bg-white p-2 rounded border border-gray-100">
                                     <div className="flex justify-between items-center mb-2"><p className="text-xs font-bold text-gray-500 uppercase">ตรวจสอบองค์ประกอบ (Required*)</p></div>
@@ -445,7 +396,6 @@ export default function AuditProjectPage() {
                                 </div>
                               )}
 
-                              {/* Step 6: People List */}
                               {step.id === 6 && step.ocrResult && (
                                 <div className="space-y-3">
                                     {step.ocrResult.people && step.ocrResult.people.length > 0 ? (
@@ -464,7 +414,6 @@ export default function AuditProjectPage() {
                                 </div>
                               )}
 
-                              {/* Feedback Buttons */}
                               {(step.id === 4 || step.id === 6) && step.ocrResult && (
                                 <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
                                     <span className="text-xs text-gray-400">Is this result correct?</span>
@@ -507,7 +456,6 @@ export default function AuditProjectPage() {
             </div>
         )}
 
-         {/* Chat Interface */}
          <div className="flex-1 overflow-hidden mt-auto pt-6">
              <div className="flex flex-col rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden min-h-[300px]">
                 <div className="flex flex-col items-center justify-center pt-6 pb-4">

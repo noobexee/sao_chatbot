@@ -1,6 +1,6 @@
 from fastapi import APIRouter
-from apps.sao_chatbot_backend.src.api.v1.audit.audit_controller import router as audit_router
+from src.api.v1.audit.audit_controller import router as audit_controller_router
 
-audit_router = APIRouter()
+api_router = APIRouter()
 
-audit_router.include_router(audit_router)
+api_router.include_router(audit_controller_router)

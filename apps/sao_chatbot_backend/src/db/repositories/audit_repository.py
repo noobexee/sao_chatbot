@@ -28,6 +28,7 @@ class AuditRepository:
             raise e
         finally:
             if conn: conn.close()
+
     def save_step_log(self, audit_id: str, step_id: int, ai_result: dict, feedback: str = None) -> bool:
         """
         Save ONLY the AI output data for a specific step to audit_feedback_logs.
@@ -46,19 +47,15 @@ class AuditRepository:
             """
 
             # --- Logic คำนวณ result_correct (Boolean) ---
+            # Default: If feedback is 'down' (thumbs down), it's False. Otherwise True.
             default_correctness = False if feedback == 'down' else True
 
             # --- Logic สำหรับ Step 4 ---
             if step_id == 4:
                 details = ai_result.get('details', {})
                 
-                # --- FIX: Handle if details is NOT a dict (e.g. List or None) ---
                 if isinstance(details, list):
                     print(f"   ⚠️ [DB] Warning: 'details' received as LIST, not DICT. Converting/Ignoring.")
-                    # If it's a list, we can't process keys. 
-                    # Attempt to convert if it's a list of key-value pairs, or just log error.
-                    # For now, let's treat it as empty or log it.
-                    # You might want to debug WHY it is a list.
                     details = {} 
                 elif not isinstance(details, dict):
                     details = {}
@@ -72,6 +69,7 @@ class AuditRepository:
                         is_edited = bool(item.get('isEdited', False))
                         user_val = str(item['value']) if (is_edited and item['value'] is not None) else ""
                         
+                        # If user edited, it implies AI was wrong (False). If not edited, use default (True/False based on feedback)
                         result_correct = False if is_edited else default_correctness
 
                         cur.execute(query_log, (
@@ -84,7 +82,7 @@ class AuditRepository:
                             result_correct  # result_correct (Boolean)
                         ))
                     else:
-                        # Fallback
+                        # Fallback for old format
                         cur.execute(query_log, (
                             audit_id, 
                             4, key, 
@@ -100,11 +98,14 @@ class AuditRepository:
                 
                 result_correct = default_correctness
                 
+                # Use json.dumps for complex objects to ensure valid string format
+                ai_value_str = json.dumps(people, ensure_ascii=False)
+
                 cur.execute(query_log, (
                     audit_id,
                     6,              # criteria_id
                     "people_list",  # field_type
-                    str(people),    # ai_value
+                    ai_value_str,   # ai_value
                     False, "",      # user_edit
                     result_correct  # result_correct
                 ))

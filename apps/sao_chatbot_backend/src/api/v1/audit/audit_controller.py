@@ -2,7 +2,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Body, Depends
 from fastapi.responses import StreamingResponse
 from src.app.audit.audit_service import AuditService
 
-router = APIRouter(prefix="/audit", tags=["Audit Process"])
+router = APIRouter(tags=["Audit Process"])
 
 def get_audit_service():
     return AuditService()

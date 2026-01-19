@@ -1,19 +1,21 @@
-import io
-from apps.sao_chatbot_backend.src.app.chatbot.retriever import Retriever
-from fastapi import APIRouter, Body, UploadFile, File
 import uuid
-import asyncio
-from apps.sao_chatbot_backend.src.app.audit.audit_service import AuditRepository
-from apps.sao_chatbot_backend.src.app.llm import audit_agents
-import shutil
+import io
 import os
+import shutil
+import asyncio
+import tempfile
+from fastapi import UploadFile
+
+# Correct imports based on your structure
+from src.db.repositories.audit_repository import AuditRepository
+from src.app.llm import audit_agents
 from src.app.llm.ocr import TyphoonOCRLoader
 
 class AuditService:
     def __init__(self):
         self.repo = AuditRepository()
 
-    async def process_upload(self, file) -> dict:
+    async def process_upload(self, file: UploadFile) -> dict:
         file_content = await file.read()
         audit_id = str(uuid.uuid4())
         file_name = file.filename or "unknown_file"
@@ -23,52 +25,39 @@ class AuditService:
             return {"status": "success", "audit_id": audit_id}
         raise Exception("Database Save Failed")
     
-    async def analyze_document_logic(self, file) -> dict:
-        # สร้างโฟลเดอร์ชั่วคราวถ้ายังไม่มี
-        if not os.path.exists("temp_uploads"):
-            os.makedirs("temp_uploads")
-            
-        temp_path = f"temp_uploads/{file.filename}"
-        
+    async def analyze_document_logic(self, file: UploadFile) -> dict:
+        temp_path = None
         try:
-            # 1. Save Temp File
-            with open(temp_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
+            # 1. Define suffix FIRST
+            # We get the file extension (e.g., ".pdf") to ensure temp file has correct type
+            suffix = os.path.splitext(file.filename or "")[1]
+            if not suffix:
+                suffix = ".tmp" # Fallback if no extension
+
+            # 2. Use suffix in NamedTemporaryFile
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                shutil.copyfileobj(file.file, tmp)
+                temp_path = tmp.name
+
+            # 3. Process with OCR
+            loader = TyphoonOCRLoader(file_path=temp_path)
             
-            # 2. OCR Service
-            extracted_text = TyphoonOCRLoader.extract_text_only(temp_path)
+            # สั่ง Load เอกสาร
+            documents = loader.load()
             
-            # 3. AI Agents (Parallel Execution)
-            step4_task = asyncio.to_thread(audit_agents.agent_step4_sufficiency, extracted_text)
-            step6_task = asyncio.to_thread(audit_agents.agent_step6_complainant, extracted_text)
+            # รวมข้อความจากทุกหน้าเข้าด้วยกัน
+            extracted_text = "\n\n".join([doc.page_content for doc in documents])
+            print(f"Extracted {len(extracted_text)} chars. Sending to Gemini Agents...")
             
+            # 4. AI Agents
+            step4_task = asyncio.to_thread(audit_agents.audit_agents.agent_step4_sufficiency, extracted_text)
+            step6_task = asyncio.to_thread(audit_agents.audit_agents.agent_step6_complainant, extracted_text)
+
             step4_ai_result, step6_ai_result = await asyncio.gather(step4_task, step6_task)
 
-            # Process Results
-            if step4_ai_result:
-                step4_response = {
-                    "status": step4_ai_result.get("status", "fail"),
-                    "title": step4_ai_result.get("title", "การวิเคราะห์ล้มเหลว"),
-                    "reason": step4_ai_result.get("reason", "-"),
-                    "details": step4_ai_result.get("details", {})
-                }
-            else:
-                step4_response = {"status": "fail", "title": "AI Error", "details": {}}
-
-            if step6_ai_result:
-                people_list = step6_ai_result.get("people", [])
-                has_complainant = any(p['role'] == 'ผู้ร้องเรียน' for p in people_list)
-                
-                step6_response = {
-                    "status": "success" if has_complainant else "fail",
-                    "title": "รายละเอียดของผู้ร้องเรียน",
-                    "people": people_list
-                }
-            else:
-                step6_response = {"status": "fail", "title": "AI Error", "people": []}
-
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+            # 5. Format Response
+            step4_response = self._format_ai_response(step4_ai_result, "step4")
+            step6_response = self._format_ai_response(step6_ai_result, "step6")
 
             return {
                 "status": "success",
@@ -78,12 +67,13 @@ class AuditService:
                     "raw_text": extracted_text[:200]
                 }
             }
-
         except Exception as e:
-            print(f"Error: {e}")
-            if os.path.exists(temp_path):
+            print(f"Error in analyze_document_logic: {e}")
+            raise e
+        finally:
+            # Cleanup temp file
+            if temp_path and os.path.exists(temp_path):
                 os.remove(temp_path)
-            return {"status": "error", "message": str(e)}    
     
     def get_audit_info(self, audit_id: str):
         return self.repo.get_audit_summary(audit_id)
@@ -104,3 +94,19 @@ class AuditService:
 
     def save_ai_feedback(self, audit_id, step_id, result):
         return self.repo.save_step_log(audit_id, int(step_id), result)
+
+    def _format_ai_response(self, result: dict, step_type: str) -> dict:
+        if not result:
+            return {"status": "fail", "title": "AI Error", "details": {}, "people": []}
+        
+        if step_type == "step6":
+            people_list = result.get("people", [])
+            has_complainant = any(p['role'] == 'ผู้ร้องเรียน' for p in people_list)
+            return {"status": "success" if has_complainant else "fail", "title": "ผู้ร้องเรียน", "people": people_list}
+        
+        return {
+            "status": result.get("status", "fail"),
+            "title": result.get("title", "การวิเคราะห์ล้มเหลว"),
+            "reason": result.get("reason", "-"),
+            "details": result.get("details", {})
+        }
