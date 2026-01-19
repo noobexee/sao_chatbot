@@ -3,7 +3,7 @@ import { getBaseUrl } from "../config";
 export interface SaveDocTextPayload {
   content: string;
   title?: string;
-  valid_from?: string; 
+  valid_from?: string;   // ISO or DD-MM-YYYY (backend parses date)
   valid_until?: string;
   version?: string;
 }
