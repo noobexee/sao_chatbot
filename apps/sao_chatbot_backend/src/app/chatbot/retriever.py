@@ -36,7 +36,7 @@ class Retriever:
     def __init__(self):
         self.vectorstore = get_vectorstore() 
         self.llm = TyphoonLLM().get_model()
-        self.reranker = CrossEncoder('BAAI/bge-reranker-v2-m3', device='cpu')
+        #self.reranker = CrossEncoder('BAAI/bge-reranker-v2-m3', device='cpu')
         self.parser = PydanticOutputParser(pydantic_object=SearchIntent)
     @time_execution
     async def generate_search_queries(self, user_query: str, history: List = None) -> Dict[str, Any]:
@@ -135,7 +135,7 @@ class Retriever:
         return [doc for doc, score in doc_score_pairs[:top_k]]
 
     @time_execution
-    async def retrieve(self, user_query: str, history: List = None, k: int = 5, search_date: str = None) -> List[Document]:
+    async def retrieve(self, user_query: str, history: List = None, k: int = 10, search_date: str = None) -> List[Document]:
 
         analysis_result = await self.generate_search_queries(user_query, history)
         
@@ -175,6 +175,7 @@ class Retriever:
         unique_candidates = list(unique_docs_map.values())
         
         print(f"Found {len(unique_candidates)} candidates. Re-ranking...")
-        final_docs = self._rerank_documents(user_query, unique_candidates, top_k=5)
+        final_docs = unique_candidates[:k]
+        #final_docs = self._rerank_documents(user_query, unique_candidates, top_k=5)
 
         return final_docs

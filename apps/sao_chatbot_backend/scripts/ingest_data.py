@@ -39,14 +39,13 @@ def chunk_by_double_enter(text: str, source_file: str):
                 page_content=chunk,
                 metadata={
                     "source": source_file,
-                    "paragraph_number": i,
                 }
             )
         )
     return documents
 
 def main():
-    print(f"📖 Loading metadata from {METADATA_FILE}...")
+    print(f"Loading metadata from {METADATA_FILE}...")
     try:
         metadata_map = load_metadata_map(METADATA_FILE)
         print(f"Loaded metadata for {len(metadata_map)} files.")
