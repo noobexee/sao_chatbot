@@ -2,11 +2,9 @@ from fastapi import APIRouter, HTTPException
 from src.api.v1.merger.doc_manage import find_doc_dir_by_id
 from src.app.llm.gemini import GeminiLLM
 from pathlib import Path
-import json
 import uuid
 from pydantic import BaseModel
-from typing import Tuple
-from datetime import datetime
+from src.api.v1.models.documnet import DocumentMeta
 
 router = APIRouter()
 MOCK_DIR = Path("mock")
@@ -15,7 +13,7 @@ class MergeRequest(BaseModel):
     base_doc_id: str
     amend_doc_id: str
 
-def load_text_and_meta(doc_id: str) -> Tuple[str, dict, Path]:
+def load_text_and_meta(doc_id: str) -> tuple[str, DocumentMeta, Path]:
     doc_dir = find_doc_dir_by_id(doc_id)
     if not doc_dir:
         raise HTTPException(404, f"Document {doc_id} not found")
@@ -25,28 +23,13 @@ def load_text_and_meta(doc_id: str) -> Tuple[str, dict, Path]:
         raise HTTPException(400, f"text.txt missing for {doc_id}")
     if not meta_path.exists():
         raise HTTPException(400, f"meta.json missing for {doc_id}")
-    return (
-        text_path.read_text(encoding="utf-8"),
-        json.loads(meta_path.read_text(encoding="utf-8")),
-        doc_dir
+    meta = DocumentMeta.model_validate_json(
+        meta_path.read_text(encoding="utf-8")
     )
 
-@router.put("/merge")
-def merge_documents(
-    base_doc_id: str,
-    amend_doc_id: str,
-):
+    return text_path.read_text(encoding="utf-8"), meta, doc_dir
 
-    base_text, base_meta, _ = load_text_and_meta(base_doc_id)
-    amend_text, amend_meta, _ = load_text_and_meta(amend_doc_id)
-
-    title = base_meta["title"]
-    doc_type = base_meta["type"]
-    base_year = base_meta.get("year")
-    amend_year = amend_meta.get("year")
-    amend_version = amend_meta.get("version", "")
-
-    prompt = """
+PROMPT_TEXT = """
   รวมเอกสาร {{AMEND_YEAR}} ({{AMEND_VERSION}}) เข้ากับเอกสาร {{BASE_YEAR}} 
   โดยให้เอกสาร {{AMEND_YEAR}} ({{AMEND_VERSION}}) เป็นตัวแก้ไขเอกสาร {{BASE_YEAR}}
 
@@ -95,10 +78,14 @@ def merge_documents(
     และ **ห้ามเปลี่ยนเลขข้อเดิม**
   """
 
+@router.put("/merge")
+def merge_documents(payload: MergeRequest):
+    base_text, base_meta, _ = load_text_and_meta(payload.base_doc_id)
+    amend_text, amend_meta, _ = load_text_and_meta(payload.amend_doc_id)
     llm = GeminiLLM()
     response = llm.invoke(
         system_prompt="คุณเป็นผู้เชี่ยวชาญด้านกฎหมายและการรวมเอกสารตามหลักนิติกรรม",
-        prompt=prompt,
+        prompt=PROMPT_TEXT,
         txt_files=[
             base_text.encode("utf-8"),
             amend_text.encode("utf-8"),
@@ -107,33 +94,33 @@ def merge_documents(
     )
     merged_text = response.content
     new_doc_id = str(uuid.uuid4())
-    merge_dir = MOCK_DIR / doc_type / new_doc_id
+    merge_dir = MOCK_DIR / base_meta.type / new_doc_id
     merge_dir.mkdir(parents=True, exist_ok=True)
+    merged_meta = DocumentMeta(
+        title=base_meta.title,
+        type=base_meta.type,
+        version=amend_meta.version,
+        valid_from=amend_meta.valid_from,
+        valid_until=base_meta.valid_until,
+        is_snapshot=True,
+        got_updated=True,
+        is_first_version=False,
+    )
     (merge_dir / "text.txt").write_text(merged_text, encoding="utf-8")
     (merge_dir / "status.txt").write_text("merged", encoding="utf-8")
     (merge_dir / "meta.json").write_text(
-        json.dumps(
-            {
-                "title": title,
-                "type": doc_type,
-                "base_doc_id": base_doc_id,
-                "amend_doc_id": amend_doc_id,
-                "base_year": base_year,
-                "amend_year": amend_year,
-                "amend_version": amend_version,
-                "generated_at": datetime.utcnow().isoformat(),
-                "kind": "merge_snapshot"
-            },
+        merged_meta.model_dump_json(
             ensure_ascii=False,
-            indent=2
+            indent=2,
         ),
         encoding="utf-8"
     )
     return {
         "status": "success",
         "id": new_doc_id,
-        "type": doc_type,
-        "title": title,
+        "type": merged_meta.type,
+        "title": merged_meta.title,
+        "is_snapshot": True,
         "text_endpoint": f"/doc/{new_doc_id}/text",
-        "meta_endpoint": f"/doc/{new_doc_id}/meta"
+        "meta_endpoint": f"/doc/{new_doc_id}/meta",
     }
