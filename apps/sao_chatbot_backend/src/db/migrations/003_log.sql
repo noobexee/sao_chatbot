@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS audit_feedback_logs (
     user_value TEXT,
     
     -- result_correct: Feedback status ('up', 'down', or NULL if just an edit without explicit rating)
-    result_correct VARCHAR(10) CHECK (result_correct IN ('up', 'down'))
+    result_correct BOOLEAN DEFAULT FALSE
 );
 
 -- Create indexes for faster querying (analytics)
