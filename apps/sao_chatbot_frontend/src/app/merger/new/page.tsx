@@ -9,15 +9,11 @@ import { getDocStatus } from "@/libs/doc_manage/getDocStatus";
 function formatDDMMYYYY(value: string) {
   const digits = value.replace(/\D/g, "").slice(0, 8);
   const parts: string[] = [];
-
   if (digits.length >= 2) parts.push(digits.slice(0, 2));
   else if (digits.length > 0) parts.push(digits);
-
   if (digits.length >= 4) parts.push(digits.slice(2, 4));
   else if (digits.length > 2) parts.push(digits.slice(2));
-
   if (digits.length > 4) parts.push(digits.slice(4));
-
   return parts.join("-");
 }
 
@@ -63,10 +59,16 @@ export default function NewDocumentPage() {
       setError("กรุณาเลือกไฟล์ PDF และประเภทเอกสาร");
       return;
     }
-
     setLoading(true);
     setError(null);
-
+    if (validFrom && !ddmmyyyyToIso(validFrom)) {
+      setError("รูปแบบวันที่ใช้ตั้งแต่ไม่ถูกต้อง");
+      return;
+    }
+    if (validUntil && !ddmmyyyyToIso(validUntil)) {
+      setError("รูปแบบวันที่ใช้ถึงไม่ถูกต้อง");
+      return;
+    }
     try {
       const res = await uploadDocument({
         file,
@@ -83,7 +85,6 @@ export default function NewDocumentPage() {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     if (!docId) return;
     let timer: NodeJS.Timeout;

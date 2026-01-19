@@ -29,6 +29,12 @@ export default function ViewDocumentPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<PreviewFile | null>(null);
 
+  function isoToDDMMYYYY(value?: string) {
+    if (!value) return "";
+    const [yyyy, mm, dd] = value.split("-");
+    return `${dd}-${mm}-${yyyy}`;
+  }
+  
   useEffect(() => {
     if (!docId) return;
     getDocMeta(docId).then((m) => {
@@ -46,7 +52,7 @@ export default function ViewDocumentPage() {
       })
       .catch(() => setText(null));
   }, [docId]);
-  
+
   useEffect(() => {
     if (!docId || !hasPdf || mode !== "pdf") return;
     getDocOriginalPreview(docId)
