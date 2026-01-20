@@ -5,22 +5,28 @@ import uuid
 import shutil
 from src.app.service.ocr_service import run_ocr_job
 from typing import Optional
-from datetime import date
+from datetime import datetime, date
 import json
 from src.api.v1.models.documnet import DocumentMeta
 
 router = APIRouter()
 MOCK_DIR = Path("mock")
 
-def parse_date(value) -> Optional[date]:
+def parse_date(value: Optional[str]) -> Optional[date]:
     if not value:
         return None
-    if isinstance(value, date):
-        return value
     try:
-        return date.fromisoformat(value)
-    except Exception:
-        return None
+        # ISO: YYYY-MM-DD
+        return datetime.fromisoformat(value).date()
+    except ValueError:
+        try:
+            # DD-MM-YYYY
+            return datetime.strptime(value, "%d-%m-%Y").date()
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid date format: {value}"
+            )
 
 def derive_title(file: UploadFile, title: str | None) -> str:
     if title and title.strip():
@@ -169,41 +175,42 @@ def get_text(doc_id: str):
         raise HTTPException(404, "Text not found")
     return FileResponse(text_path, media_type="text/plain")
 
-@router.put("/doc/{doc_id}/text")
+@router.put("/doc/{doc_id}/edit")
 def edit_data(
     doc_id: str,
-    title: Optional[str] = Form(None),
-    valid_from: Optional[date] = Form(None),
-    valid_until: Optional[date] = Form(None),
-    version: Optional[str] = Form(None),
-    file: UploadFile = File(...)
+    title: str = Form(...),                
+    valid_from: str = Form(...),
+    type : str = Form(...),
+    valid_until: Optional[str] = Form(None),
+    version: Optional[str] = Form(None),   
+    file: UploadFile = File(...)             
 ):
     doc_dir = find_doc_dir_by_id(doc_id)
     if not doc_dir:
         raise HTTPException(404, "Document not found")
-    meta_path = doc_dir / "meta.json"
-    meta = load_meta(meta_path)
-    if meta.is_snapshot:
-        raise HTTPException(400, "Snapshot document is read-only")
+
     if file.content_type != "text/plain":
         raise HTTPException(400, "Only .txt allowed")
+    
     (doc_dir / "text.txt").write_text(
         file.file.read().decode("utf-8"),
         encoding="utf-8"
     )
-    if title is not None:
-        meta.title = title
-    if valid_from is not None:
-        meta.valid_from = valid_from
-    if valid_until is not None:
-        meta.valid_until = valid_until
-    if version is not None:
-        meta.version = version
+
+    meta = load_meta(doc_dir / "meta.json")
+    meta.title = title
+    meta.valid_from = parse_date(valid_from)
+    meta.valid_until = parse_date(valid_until) if valid_until else None
+    meta.version = version
+    meta.type = type
+    
     (doc_dir / "meta.json").write_text(
         meta.model_dump_json(ensure_ascii=False, indent=2),
         encoding="utf-8"
     )
+
     return {"status": "updated", "doc_id": doc_id}
+
 
 
 @router.get("/doc/{doc_id}/meta", response_model=DocumentMeta)

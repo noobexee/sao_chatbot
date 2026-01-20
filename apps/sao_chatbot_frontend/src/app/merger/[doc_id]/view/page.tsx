@@ -7,7 +7,7 @@ import { getDocText } from "@/libs/doc_manage/getDocText";
 import { checkHasPdf } from "@/libs/doc_manage/getDocOriginal";
 import { getDocOriginalPreview, PreviewFile } from "@/libs/doc_manage/getOriginalPreview";
 import { getDocStatus, DocStatusResponse } from "@/libs/doc_manage/getDocStatus";
-import { saveDocText } from "@/libs/doc_manage/uploadText";
+import { saveDocText } from "@/libs/doc_manage/updateDocument";
 
 type ViewMode = "pdf" | "text";
 
@@ -107,6 +107,7 @@ export default function ViewDocumentPage() {
         title: editMeta.title,
         version: editMeta.version ?? undefined,
         valid_from: editMeta.valid_from,
+        type: editMeta.type,
         valid_until: editMeta.valid_until ?? undefined,
       });
       setMeta(editMeta);
@@ -138,10 +139,16 @@ export default function ViewDocumentPage() {
         )}
         {meta && (
           <div className="text-xs text-gray-500 flex gap-2 flex-wrap">
-            <span>{meta.type}</span>
-
             {editing ? (
               <>
+                <input
+                  className="border rounded px-2"
+                  value={editMeta?.type ?? ""}
+                  placeholder="ประเภท"
+                  onChange={(e) =>
+                    setEditMeta((m) => m && { ...m, type: e.target.value })
+                  }
+                />
                 <input
                   className="border rounded px-2"
                   value={editMeta?.version ?? ""}
@@ -173,6 +180,7 @@ export default function ViewDocumentPage() {
               </>
             ) : (
               <>
+                {meta.type && <span>ประเภท {meta.type}</span>}
                 {meta.version && <span>ฉบับที่ {meta.version}</span>}
                 {meta.valid_from && <span>ใช้ตั้งแต่ {meta.valid_from}</span>}
                 {meta.valid_until && <span>ถึง {meta.valid_until}</span>}
