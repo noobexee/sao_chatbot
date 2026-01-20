@@ -7,6 +7,9 @@ from src.app.llm.typhoon import TyphoonLLM
 from src.app.chatbot.schemas import RAGResponse
 from src.app.chatbot.retriever import Retriever
 from src.db.repositories.chat_repository import ChatRepository
+from langchain_core.globals import set_debug
+
+set_debug(True)
 
 class Chatbot:
     def __init__(self):
@@ -28,10 +31,10 @@ class Chatbot:
             return "No relevant legal documents found."
             
         formatted_chunks = []
+        i = 1
         for doc in docs:
-            file_name = doc.metadata.get("source", "Unknown File").split("/")[-1]
-            para = doc.metadata.get("paragraph_number", "?")
-            formatted_chunks.append(f"[Source: {file_name}, Para: {para}]\n{doc.page_content}")
+            formatted_chunks.append(f"Chunk {i} Title: {doc.metadata['law_name']} \n{doc.page_content}")
+            i += 1
             
         return "\n\n---\n\n".join(formatted_chunks)
     
@@ -78,25 +81,50 @@ class Chatbot:
         llm_runnable = self.llm.get_model()
 
         retrieved_docs = await self.retriever.retrieve(query, history_messages)
-        
-        analysis_date_info = retrieved_docs[0].metadata.get("_analysis_date", "Unknown") if retrieved_docs else "Unknown"
 
-        prompt_template = ChatPromptTemplate.from_messages([
-            ("system", """คุณเป็นผู้ช่วยทางกฎหมายที่เชี่ยวชาญระเบียบสำนักงานตรวจเงินแผ่นดิน
-            จงตอบคำถามโดยใช้ข้อมูลจาก Context ที่ให้มาเท่านั้น
-            เนื้อหาด้านล่างนี้สะท้อนถึงกฎหมายที่ใช้บังคับ ณ วันที่: {{analysis_date}}
-            Context:
-            {context}"""),
-            MessagesPlaceholder(variable_name="history"), 
-            ("human", "{input}")
-        ])
+        prompt_template = ChatPromptTemplate.from_messages(
+            [
+                ("system", """
+                    ### Role
+                    You are a highly knowledgeable and professional Thai Legal Expert. Your goal is to provide accurate legal information based strictly on provided documentation while maintaining a professional and polite demeanor in Thai.
+
+                    ### Variables
+                    - **Context:** {context} (Information retrieved from the legal database)
+                    - **Chat History:** {history} (Previous interactions for continuity)
+
+                    ### Operational Logic & Constraints
+
+                    1. **Query Classification:**
+                    - **General Queries:** If the user's input is a greeting (e.g., "Hi", "Hello"), a common courtesy, or a non-legal request, respond naturally and professionally in Thai without using the context.
+                    - **Legal Queries:** If the user asks about laws, regulations, or legal advice, you must analyze the provided context.
+
+                    2. **Context Utilization (Strict RAG Rules):**
+                    - You must prioritize the context for all legal answers.
+                    - Because the retrieval system may include irrelevant data, you must evaluate the context first. If the context is irrelevant to the query or does not contain the answer, ignore it.
+                    - **No Hallucination:** If the question is legal-related but the context does not provide the specific answer, you must clearly state that you do not have enough information to answer that specific question. Do not use external legal knowledge or make up answers.
+
+                    3. **Response Style & Language:**
+                    - **Language:** Always respond in **Professional Thai (ภาษาไทยระดับทางการ/กึ่งทางการ)**.
+                    - **Tone:** Authoritative yet helpful and polite.
+                    - **Conciseness:** Be direct and concise. Do not repeat the question or provide redundant explanations. Provide the core answer immediately.
+
+                    4. **Interaction Handling:**
+                    - Use the history to maintain context for follow-up questions (e.g., if the user asks "And what about the penalty for that?", refer to the previous topic in the history).
+
+                    ### Formatting
+                    - Use bullet points for lists of legal requirements or conditions.
+                    - Use bold text for key legal terms or specific Section/Article numbers.
+                
+                    """),
+                ("human", "{input}")
+            ]
+        )
 
         chain = (
             {
                 "context": lambda x: self._format_docs_with_sources(retrieved_docs),
                 "history": lambda x: history_messages,
-                "input": lambda x: query,
-                "analysis_date": lambda x: analysis_date_info
+                "input": lambda x: query
             }
             | prompt_template 
             | llm_runnable 
@@ -106,10 +134,9 @@ class Chatbot:
         try:
             answer_text = await chain.ainvoke({})
         except Exception as e:
-            print(f"❌ Chain Execution Failed: {e}")
+            print(f"Chain Execution Failed: {e}")
             raise e
 
-        # 3. SAVE & RETURN
         self.repository.save_message(user_id, session_id, query, answer_text)
         
         model_name = getattr(llm_runnable, "model_name", getattr(llm_runnable, "model", "Unknown Model"))

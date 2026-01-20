@@ -9,10 +9,12 @@ from sentence_transformers import CrossEncoder
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field 
 from weaviate.classes.query import Filter 
-from apps.sao_chatbot_backend.src.app.utils import time_execution
 from src.app.llm.typhoon import TyphoonLLM
 from src.db.vector_store import get_vectorstore
 from dotenv import load_dotenv
+from src.app.chatbot.chatbot import Chatbot
+from langchain_core.globals import set_debug
+
 
 load_dotenv()
 
@@ -40,7 +42,7 @@ class Retriever:
         self.llm = TyphoonLLM().get_model()
         self.reranker = CrossEncoder('BAAI/bge-reranker-v2-m3', device='cpu')
         self.parser = PydanticOutputParser(pydantic_object=SearchIntent)
-    @time_execution
+
     async def generate_search_queries(self, user_query: str, history: List = None) -> Dict[str, Any]:
 
         if history is None:
@@ -126,8 +128,7 @@ class Retriever:
             composite_filter = composite_filter & f
             
         return composite_filter
-
-    @time_execution
+    
     def _rerank_documents(self, user_query: str, docs: List[Document], top_k: int = 3) -> List[Document]:
         if not docs: return []
         pairs = [[user_query, doc.page_content] for doc in docs]
@@ -136,8 +137,7 @@ class Retriever:
         doc_score_pairs.sort(key=lambda x: x[1], reverse=True)
         return [doc for doc, score in doc_score_pairs[:top_k]]
 
-    @time_execution
-    async def retrieve(self, user_query: str, history: List = None, k: int = 10, search_date: str = None) -> List[Document]:
+    async def retrieve(self, user_query: str, history: List = None, k: int = 1, search_date: str = None) -> List[Document]:
 
         analysis_result = await self.generate_search_queries(user_query, history)
         
@@ -162,7 +162,7 @@ class Retriever:
             time_filter = None
 
         all_docs = []
-        
+        print(search_queries)
         print(f"Searching: {search_queries} @ {final_date}")
         for query in search_queries:
             docs = self.vectorstore.similarity_search(
@@ -181,59 +181,61 @@ class Retriever:
         #return final_docs
 
 
-
-async def main():
-    query = "เรื่องที่มาจากการ้องเรียนมีที่มาจากอะไรบ้าง"
-    
-    load_dotenv()
+if __name__ ==  "__main__" :
     retriever = Retriever()
-    
-    try:
-        retrieved_docs = await retriever.retrieve(query) 
-        if retrieved_docs:
-            print(f"\n✅ Found {len(retrieved_docs)} results:\n")
-            for i, doc in enumerate(retrieved_docs, 1):
-                source = doc.metadata.get("source", "Unknown File")
-                law_name = doc.metadata.get("law_name", "N/A")
-                valid_from = doc.metadata.get("valid_from", "N/A")
-                valid_until = doc.metadata.get("valid_until", "N/A")
-                doc_type = doc.metadata.get("doc_type", "N/A")
+    query = ""
+    vectorstore = get_vectorstore() 
+    docs = vectorstore.similarity_search(
+            query, 
+            5, 
+            alpha=1,
+        )
+    chatbot = Chatbot()
+    prompt_template = ChatPromptTemplate.from_messages([
+                ("system", """
+                    ### Role
+                    You are a highly knowledgeable and professional Thai Legal Expert. Your goal is to provide accurate legal information based strictly on provided documentation while maintaining a professional and polite demeanor in Thai.
+
+                    ### Variables
+                    - **Context:** {context} (Information retrieved from the legal database)
+                    - **Chat History:** {history} (Previous interactions for continuity)
+
+                    ### Operational Logic & Constraints
+
+                    1. **Query Classification:**
+                    - **General Queries:** If the user's input is a greeting (e.g., "Hi", "Hello"), a common courtesy, or a non-legal request, respond naturally and professionally in Thai without using the context.
+                    - **Legal Queries:** If the user asks about laws, regulations, or legal advice, you must analyze the provided context.
+
+                    2. **Context Utilization (Strict RAG Rules):**
+                    - You must prioritize the context for all legal answers.
+                    - Because the retrieval system may include irrelevant data, you must evaluate the context first. If the context is irrelevant to the query or does not contain the answer, ignore it.
+                    - **No Hallucination:** If the question is legal-related but the context does not provide the specific answer, you must clearly state that you do not have enough information to answer that specific question. Do not use external legal knowledge or make up answers.
+
+                    3. **Response Style & Language:**
+                    - **Language:** Always respond in **Professional Thai (ภาษาไทยระดับทางการ/กึ่งทางการ)**.
+                    - **Tone:** Authoritative yet helpful and polite.
+                    - **Conciseness:** Be direct and concise. Do not repeat the question or provide redundant explanations. Provide the core answer immediately.
+
+                    4. **Interaction Handling:**
+                    - Use the history to maintain context for follow-up questions (e.g., if the user asks "And what about the penalty for that?", refer to the previous topic in the history).
+
+                    ### Formatting
+                    - Use bullet points for lists of legal requirements or conditions.
+                    - Use bold text for key legal terms or specific Section/Article numbers.
                 
-                print(f"{i} Law name: {law_name}")
-                print(f"{i} valid_from: {valid_from}")
-                print(f"{i} valid_until: {valid_until}")
-                print(f"{i} doc_type: {doc_type}")
-                print(f"Content: {doc.page_content}") 
-                print("-" * 60)
-        else:
-            print("No documents found.")
-            
-    finally:
-        print("\nClosing connection...")
-        if hasattr(retriever.vectorstore, "client"):
-            retriever.vectorstore.client.close()
-        elif hasattr(retriever.vectorstore, "_client"):
-            retriever.vectorstore._client.close()
+                    """),
+                ("human", "{input}")
+        ])
 
-async def main2():
-    query = "การกำหนดประเด็นการตรวจสอบ เกณฑ์ที่ใช้ในการตรวจสอบ และแนวทางการตรวจสอบ รวมถึงระยะเวลาในการดำเนินการ กรณีเรื่องที่คัดเลือกมาจากการประเมินความเสี่ยงของหน่วยรับตรวจ ให้ดำเนินการอย่างไร"
-    test_date = "2025-12-20"
+    chain = (
+            {
+                "context": lambda x: chatbot.format_docs_with_sources(docs),
+                "history": lambda x: [],
+                "input": lambda x: query
+            }
+            | prompt_template 
+            | TyphoonLLM().get_model()
+        ) 
+    ans = chain.invoke({})
+    print(ans.content)
     
-    retriever = Retriever()
-    
-    print(f"--- Testing retrieverwith date: {test_date} ---")
-    
-    try:
-        retrieved_docs = await retriever.generate_search_queries(query)
-        print(retrieved_docs)
-        
-            
-    finally:
-        print("\nClosing connection...")
-        if hasattr(retriever.vectorstore, "client"):
-            retriever.vectorstore.client.close()
-        elif hasattr(retriever.vectorstore, "_client"):
-            retriever.vectorstore._client.close()
-
-if __name__ == "__main__":
-    asyncio.run(main())

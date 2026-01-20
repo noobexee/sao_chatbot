@@ -1,4 +1,3 @@
-# src/app/utils.py
 import time
 import functools
 import asyncio
