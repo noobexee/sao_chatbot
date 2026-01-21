@@ -1,30 +1,28 @@
 import json
+import re
+from src.app.llm.typhoon import TyphoonLLM
 
-from sympy import re
-from src.config import settings
-from src.app.llm.audit_gemini import Audit_GeminiLLM
-
-api_key = settings.GOOGLE_API_KEY
-client = Audit_GeminiLLM(api_key=api_key)
+# Initialize Typhoon Client
+# Assuming TyphoonLLM does not require parameters if they are in settings
+# or you can pass model_name if needed.
+client_wrapper = TyphoonLLM() 
+client = client_wrapper.get_model() # This returns the ChatOpenAI instance
 
 class AuditAgents:
     
-    def _call_gemini(self, system_prompt, user_text):
+    def _call_typhoon(self, system_prompt, user_text):
         try:
             full_prompt = f"{system_prompt}\n\nเอกสารที่ต้องตรวจสอบ:\n{user_text}"
-            response = client.invoke(
-                model='gemini-2.5-flash',
-                contents=full_prompt,
-                config={
-                    'response_mime_type': 'application/json'
-                }
-            )
-            content = response.text
+            
+            # ChatOpenAI.invoke returns an AIMessage object
+            response = client.invoke(full_prompt)
+            
+            content = response.content
             if not content:
-                print("⚠️ Gemini returned empty content.")
+                print("⚠️ Typhoon returned empty content.")
                 return None
 
-            # ✅ Fix: Clean Markdown code blocks (```json ... ```) if present
+            # Clean Markdown code blocks (```json ... ```) if present
             if "```" in content:
                 content = re.sub(r"^```json\s*", "", content, flags=re.MULTILINE)
                 content = re.sub(r"^```\s*", "", content, flags=re.MULTILINE)
@@ -33,9 +31,10 @@ class AuditAgents:
             return json.loads(content.strip())
 
         except Exception as e:
-            print(f"Gemini Error: {e}")
-            if 'response' in locals():
-                print(f"Raw Response: {response.text}") # Debug log
+            print(f"Typhoon Error: {e}")
+            # If response variable exists, print it for debugging
+            # if 'response' in locals():
+            #     print(f"Raw Response: {response}") 
             return None
 
     # --- AGENT 1: Step 4 (Detailed Sufficiency Check) ---
@@ -52,7 +51,6 @@ class AuditAgents:
         2. **พฤติการณ์ (Behavior):** การกระทำที่ถูกกล่าวหา (เช่น "ทุจริตจัดซื้อ", "นำรถหลวงไปใช้ส่วนตัว")
         3. **เจ้าหน้าที่ผู้ถูกร้อง (Official):** ชื่อ-นามสกุล หรือตำแหน่งที่ระบุตัวตนได้ชัดเจน ของผู้ที่ถูกกล่าวหา
             - *ต้องเป็นชื่อเฉพาะบุคคลเท่านั้น* ต้องมีคำนำหน้า (นาย, นาง, นางสาว, ยศ) ตามด้วยชื่อและนามสกุลจริง
-            - *ห้าม* นับนามแฝงหรือชื่อสมมติ เช่น "พลเมืองดี", "ผู้หวังดี", "ชาวบ้าน", "ข้าราชการชั้นผู้น้อย" เป็นชื่อคนเด็ดขาด
             - *ห้าม* นับนามแฝงหรือชื่อสมมติ เช่น "พลเมืองดี", "ผู้หวังดี", "ชาวบ้าน", "ข้าราชการชั้นผู้น้อย" เป็นชื่อคนเด็ดขาด
         4. **วันเวลา (Date):** ช่วงเวลาที่เกิดเหตุ
         5. **สถานที่ (Location):** สถานที่เกิดเหตุ (จังหวัด, อำเภอ หรือสถานที่เกิดเหตุ)
@@ -75,7 +73,7 @@ class AuditAgents:
             }
         }
         """
-        return self._call_gemini(system_prompt, text)
+        return self._call_typhoon(system_prompt, text)
 
     # --- AGENT 2: Step 6 (Specific Person Check) ---
     def agent_step6_complainant(self, text):
@@ -85,11 +83,11 @@ class AuditAgents:
         ตอบกลับเป็น JSON เท่านั้น:
         {
             "people": [
-                { "name": "ชื่อ-นามสกุลจริงเท่านั้น", "role": "ผู้ร้องเรียน" หรือ "ผู้ถูกร้องเรียน" หรือ "พยาน" }
+                { "name": "คำนำหน้า ชื่อ-นามสกุลจริงเท่านั้น", "role": "ผู้ร้องเรียน" หรือ "ผู้ถูกร้องเรียน" หรือ "พยาน" }
             ]
         }
         """
-        return self._call_gemini(system_prompt, text)
+        return self._call_typhoon(system_prompt, text)
 
     # --- AGENT 3: Step 2 (Jurisdiction Check - NEW!) ---
     def agent_step2_jurisdiction(self, text):
