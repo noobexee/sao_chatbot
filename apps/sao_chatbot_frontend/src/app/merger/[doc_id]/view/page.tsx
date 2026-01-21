@@ -8,12 +8,14 @@ import { checkHasPdf } from "@/libs/doc_manage/getDocOriginal";
 import { getDocOriginalPreview, PreviewFile } from "@/libs/doc_manage/getOriginalPreview";
 import { getDocStatus, DocStatusResponse } from "@/libs/doc_manage/getDocStatus";
 import { saveDocText } from "@/libs/doc_manage/updateDocument";
+import { deleteDocument } from "@/libs/doc_manage/deleteDoc"; // <-- เพิ่ม
 
 type ViewMode = "pdf" | "text";
 
 export default function ViewDocumentPage() {
   const params = useParams<{ doc_id: string }>();
   const docId = params?.doc_id;
+
   const [meta, setMeta] = useState<DocMeta | null>(null);
   const [editMeta, setEditMeta] = useState<DocMeta | null>(null);
   const [text, setText] = useState<string | null>(null);
@@ -29,22 +31,56 @@ export default function ViewDocumentPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<PreviewFile | null>(null);
 
-  function isoToDDMMYYYY(value?: string) {
-    if (!value) return "";
-    const [yyyy, mm, dd] = value.split("-");
-    return `${dd}-${mm}-${yyyy}`;
+function isoToThaiDate(value?: string) {
+  if (!value) return "";
+  const monthMap: Record<string, string> = {
+    "01": "ม.ค.",
+    "02": "ก.พ.",
+    "03": "มี.ค.",
+    "04": "เม.ย.",
+    "05": "พ.ค.",
+    "06": "มิ.ย.",
+    "07": "ก.ค.",
+    "08": "ส.ค.",
+    "09": "ก.ย.",
+    "10": "ต.ค.",
+    "11": "พ.ย.",
+    "12": "ธ.ค.",
+  };
+  let yyyy = "";
+  let mm = "";
+  let dd = "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    [yyyy, mm, dd] = value.split("-");
   }
-  
+  else if (/^\d{8}$/.test(value)) {
+    yyyy = value.slice(0, 4);
+    mm = value.slice(4, 6);
+    dd = value.slice(6, 8);
+  } else {
+    return "";
+  }
+  const monthThai = monthMap[mm];
+  if (!monthThai) return "";
+  return `${dd} ${monthThai} พ.ศ. ${yyyy}`;
+}
+
+
+
+
   useEffect(() => {
     if (!docId) return;
+
     getDocMeta(docId).then((m) => {
       setMeta(m);
       setEditMeta(m);
     });
+
     checkHasPdf(docId).then((ok) => {
       setHasPdf(ok);
       if (!ok) setMode("text");
     });
+
     getDocText(docId)
       .then((t) => {
         setText(t);
@@ -55,6 +91,7 @@ export default function ViewDocumentPage() {
 
   useEffect(() => {
     if (!docId || !hasPdf || mode !== "pdf") return;
+
     getDocOriginalPreview(docId)
       .then(setCurrentFile)
       .catch(() => setCurrentFile(null));
@@ -67,6 +104,7 @@ export default function ViewDocumentPage() {
       }
     };
   }, [currentFile]);
+
   useEffect(() => {
     if (!docId) return;
     if (status === "done" || status === "merged") return;
@@ -91,16 +129,19 @@ export default function ViewDocumentPage() {
 
         timer = setTimeout(poll, 3000);
       } catch {
-        setError("ไม่สามารถตรวจสอบสถานะ OCR ได้");
+        setError("ไม่พบเอกสารนี้ในระบบ");
       }
     };
+
     poll();
     return () => clearTimeout(timer);
   }, [docId, status]);
+
   const onSave = async () => {
     if (!docId || !editMeta) return;
     setSaving(true);
     setError(null);
+
     try {
       await saveDocText(docId, {
         content: draft,
@@ -110,6 +151,7 @@ export default function ViewDocumentPage() {
         type: editMeta.type,
         valid_until: editMeta.valid_until ?? undefined,
       });
+
       setMeta(editMeta);
       setText(draft);
       setEditing(false);
@@ -120,9 +162,27 @@ export default function ViewDocumentPage() {
     }
   };
 
+  const onDelete = async () => {
+    if (!docId) return;
+    if (!confirm("ยืนยันการลบเอกสารนี้?")) return;
+
+    try {
+      await deleteDocument(docId);
+      setMeta(null);
+      setEditMeta(null);
+      setText(null);
+      setDraft("");
+      setCurrentFile(null);
+      setStatus("deleted");
+    } catch {
+      setError("ลบเอกสารไม่สำเร็จ");
+    }
+  };
+
   if (!docId) {
     return <div className="p-6 text-red-500">Document ID not found</div>;
   }
+
   return (
     <div className="flex h-full flex-col p-4 md:p-6">
       <div className="border-b bg-white px-6 py-4 space-y-2">
@@ -137,6 +197,7 @@ export default function ViewDocumentPage() {
         ) : (
           <h1 className="text-base font-semibold">{meta?.title ?? "—"}</h1>
         )}
+
         {meta && (
           <div className="text-xs text-gray-500 flex gap-2 flex-wrap">
             {editing ? (
@@ -144,7 +205,6 @@ export default function ViewDocumentPage() {
                 <input
                   className="border rounded px-2"
                   value={editMeta?.type ?? ""}
-                  placeholder="ประเภท"
                   onChange={(e) =>
                     setEditMeta((m) => m && { ...m, type: e.target.value })
                   }
@@ -152,7 +212,6 @@ export default function ViewDocumentPage() {
                 <input
                   className="border rounded px-2"
                   value={editMeta?.version ?? ""}
-                  placeholder="ฉบับที่"
                   onChange={(e) =>
                     setEditMeta((m) => m && { ...m, version: e.target.value })
                   }
@@ -162,9 +221,7 @@ export default function ViewDocumentPage() {
                   className="border rounded px-2"
                   value={editMeta?.valid_from ?? ""}
                   onChange={(e) =>
-                    setEditMeta(
-                      (m) => m && { ...m, valid_from: e.target.value }
-                    )
+                    setEditMeta((m) => m && { ...m, valid_from: e.target.value })
                   }
                 />
                 <input
@@ -172,9 +229,7 @@ export default function ViewDocumentPage() {
                   className="border rounded px-2"
                   value={editMeta?.valid_until ?? ""}
                   onChange={(e) =>
-                    setEditMeta(
-                      (m) => m && { ...m, valid_until: e.target.value }
-                    )
+                    setEditMeta((m) => m && { ...m, valid_until: e.target.value })
                   }
                 />
               </>
@@ -182,12 +237,17 @@ export default function ViewDocumentPage() {
               <>
                 {meta.type && <span>ประเภท {meta.type}</span>}
                 {meta.version && <span>ฉบับที่ {meta.version}</span>}
-                {meta.valid_from && <span>ใช้ตั้งแต่ {meta.valid_from}</span>}
-                {meta.valid_until && <span>ถึง {meta.valid_until}</span>}
+                {meta.valid_from && (
+                  <span>ใช้ตั้งแต่ {isoToThaiDate(meta.valid_from)}</span>
+                )}
+                {meta.valid_until && (
+                  <span>ถึง {isoToThaiDate(meta.valid_until)}</span>
+                )}
               </>
             )}
           </div>
         )}
+
         <div className="flex justify-between items-center pt-2">
           <div className="flex rounded-full border overflow-hidden">
             <button
@@ -212,44 +272,52 @@ export default function ViewDocumentPage() {
               Text
             </button>
           </div>
-          {mode === "text" &&
-            (status === "done" || status === "merged") && (
-              <div className="flex gap-2">
-                {!editing ? (
+
+          <div className="flex gap-2">
+            {mode === "text" &&
+              (status === "done" || status === "merged") &&
+              (!editing ? (
+                <button
+                  onClick={() => {
+                    setEditing(true);
+                    setEditMeta(meta);
+                  }}
+                  className="text-sm px-4 py-1 rounded bg-gray-100"
+                >
+                  แก้ไข
+                </button>
+              ) : (
+                <>
+                  <button
+                    disabled={saving}
+                    onClick={onSave}
+                    className="text-sm px-4 py-1 rounded bg-blue-600 text-white"
+                  >
+                    {saving ? "กำลังบันทึก…" : "บันทึก"}
+                  </button>
                   <button
                     onClick={() => {
-                      setEditing(true);
+                      setDraft(text ?? "");
                       setEditMeta(meta);
+                      setEditing(false);
                     }}
                     className="text-sm px-4 py-1 rounded bg-gray-100"
                   >
-                    แก้ไข
+                    ยกเลิก
                   </button>
-                ) : (
-                  <>
-                    <button
-                      disabled={saving}
-                      onClick={onSave}
-                      className="text-sm px-4 py-1 rounded bg-blue-600 text-white"
-                    >
-                      {saving ? "กำลังบันทึก…" : "บันทึก"}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setDraft(text ?? "");
-                        setEditMeta(meta);
-                        setEditing(false);
-                      }}
-                      className="text-sm px-4 py-1 rounded bg-gray-100"
-                    >
-                      ยกเลิก
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
+                </>
+              ))}
+
+            <button
+              onClick={onDelete}
+              className="text-sm px-4 py-1 rounded bg-red-600 text-white"
+            >
+              ลบ
+            </button>
+          </div>
         </div>
       </div>
+
       <div className="flex-1 overflow-hidden bg-gray-50">
         {mode === "pdf" && hasPdf && (
           <iframe
@@ -257,6 +325,7 @@ export default function ViewDocumentPage() {
             className="w-full h-full border-none"
           />
         )}
+
         {mode === "text" && (
           <div className="h-full overflow-auto p-6 bg-white space-y-4">
             {status !== "done" && status !== "merged" && (
@@ -267,7 +336,9 @@ export default function ViewDocumentPage() {
                 message={message}
               />
             )}
+
             {error && <p className="text-sm text-red-500">{error}</p>}
+
             {(status === "done" || status === "merged") &&
               (editing ? (
                 <textarea

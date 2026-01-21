@@ -211,8 +211,6 @@ def edit_data(
 
     return {"status": "updated", "doc_id": doc_id}
 
-
-
 @router.get("/doc/{doc_id}/meta", response_model=DocumentMeta)
 def get_metadata(doc_id: str):
     doc_dir = find_doc_dir_by_id(doc_id)
@@ -220,3 +218,13 @@ def get_metadata(doc_id: str):
         raise HTTPException(404, "Document not found")
     return load_meta(doc_dir / "meta.json")
 
+@router.delete("/doc/{doc_id}")
+def delete_document(doc_id: str):
+    doc_dir = find_doc_dir_by_id(doc_id)
+    if not doc_dir:
+        raise HTTPException(404, "Document not found")
+    shutil.rmtree(doc_dir)
+    return {
+        "status": "deleted",
+        "doc_id": doc_id
+    }
