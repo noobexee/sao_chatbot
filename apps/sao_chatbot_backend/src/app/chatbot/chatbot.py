@@ -1,8 +1,10 @@
-from typing import List, Any, Dict, Set, Optional
+from typing import List, Any, Dict, Optional
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.documents import Document
+from pydantic import BaseModel, Field
+from langchain_core.output_parsers import JsonOutputParser
 from src.app.llm.typhoon import TyphoonLLM
 from src.app.chatbot.schemas import RAGResponse
 from src.app.chatbot.retriever import Retriever
@@ -10,7 +12,10 @@ from src.db.repositories.chat_repository import ChatRepository
 from langchain_core.globals import set_debug
 
 set_debug(True)
-
+class FileResponse(BaseModel):
+    answer_text: str = Field(description="A polite, formal Thai response (e.g., 'ขออนุญาตนำส่งเอกสาร').")
+    target_files: List[str] = Field(description="List of exact filenames found. Empty list if none.")
+    
 class Chatbot:
     def __init__(self):
         self.llm = TyphoonLLM()
@@ -77,7 +82,7 @@ class Chatbot:
             return {"status": "error", "message": str(e)}
     
     async def _get_routing_decision(self, query: str, history_messages: list) -> str: 
-        history_str = "\n".join([f"{msg.type}: {msg.content}" for msg in history_messages[-3:]])
+        history_str = "\n".join([f"{msg.type}: {msg.content}" for msg in history_messages[-5:]])
 
         routing_prompt = ChatPromptTemplate.from_messages([
             ("system", """You are a precision router for a Thai Legal RAG system.
@@ -133,18 +138,40 @@ class Chatbot:
             return "LEGAL_RAG"
 
     async def _handle_chitchat(self, query: str, history: list):
-        """
-        Handles greetings and small talk. 
-        Returns: (answer_text, [])
-        """
+
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a helpful and polite Thai Legal Assistant. 
-            Respond naturally to the user's greeting or small talk in Thai. 
-            Do not provide legal advice or invent information."""),
+            ("system", """
+                You are a specialized Legal Assistant skilled in the regulations of the **Office of the Ombudsman (สำนักงานผู้ตรวจการแผ่นดิน)**.
+                
+                **Your Scope of Expertise:**
+                1. **Regulations (ระเบียบ):** Official regulations of the Office of the Ombudsman.
+                2. **Orders (คำสั่ง):** Administrative or enforcement orders related to the office.
+                3. **Guidelines (แนวทาง):** Operational guidelines and practice standards.
+
+                **Your Goal:** Politely acknowledge the user's greeting, then immediately guide them to ask about these specific documents.
+                
+                **Guidelines:**
+                - **Language:** Professional Thai (ภาษาไทยระดับทางการ).
+                - **Tone:** Formal, precise, and helpful.
+                - **Pivot Strategy:** Do not stay in small talk. End your greeting by listing what you can search for (Regulations, Orders, Guidelines).
+                
+                **Example Response:**
+                - User: "สวัสดี" (Hello)
+                - You: "สวัสดีครับ ผมเป็นระบบผู้ช่วยค้นหาข้อมูลระเบียบ คำสั่ง และแนวทางปฏิบัติของสำนักงานผู้ตรวจการแผ่นดิน มีหัวข้อใดที่ต้องการให้ช่วยตรวจสอบไหมครับ"
+            """
+            ),
+            MessagesPlaceholder(variable_name="history"),
             ("human", "{input}")
         ])
-        
-        chain = prompt | self.llm.get_model() | StrOutputParser()
+        chain = (
+            {
+                "history": lambda x: history,
+                "input": lambda x: query
+            }
+            | prompt 
+            | self.llm.get_model() 
+            | StrOutputParser()
+        )
         
         answer = await chain.ainvoke({"input": query})
         
@@ -153,40 +180,38 @@ class Chatbot:
     async def _handle_legal_rag(self, query: str, history: list):
         retrieved_docs = await self.retriever.retrieve(query, history)
         
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", """
-                    ### Role
-                    You are a highly knowledgeable and professional Thai Legal Expert. Your goal is to provide accurate legal information based strictly on provided documentation while maintaining a professional and polite demeanor in Thai.
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """
+                ### Role
+                You are a highly knowledgeable and professional Thai Legal Expert. Your goal is to provide accurate legal information based strictly on provided documentation while maintaining a professional and polite demeanor in Thai.
 
-                    ### Variables
-                    - **Context:** {context} (Information retrieved from the legal database)
-                    - **Chat History:** {history} (Previous interactions for continuity)
+                ### Variables
+                - **Context:** {context} (Information retrieved from the legal database)
+                - **Chat History:** {history} (Previous interactions for continuity)
 
-                    ### Operational Logic & Constraints
+                ### Operational Logic & Constraints
 
-                    1. **Query Classification:**
-                    - **General Queries:** If the user's input is a greeting (e.g., "Hi", "Hello"), a common courtesy, or a non-legal request, respond naturally and professionally in Thai without using the context.
-                    - **Legal Queries:** If the user asks about laws, regulations, or legal advice, you must analyze the provided context.
+                1. **Query Classification:**
+                - **Legal Queries:** If the user asks about laws, regulations, or legal advice, you must analyze the provided context.
 
-                    2. **Context Utilization (Strict RAG Rules):**
-                    - You must prioritize the context for all legal answers.
-                    - Because the retrieval system may include irrelevant data, you must evaluate the context first. If the context is irrelevant to the query or does not contain the answer, ignore it.
-                    - **No Hallucination:** If the question is legal-related but the context does not provide the specific answer, you must clearly state that you do not have enough information to answer that specific question. Do not use external legal knowledge or make up answers.
+                2. **Context Utilization (Strict RAG Rules):**
+                - You must prioritize the context for all legal answers.
+                - Because the retrieval system may include irrelevant data, you must evaluate the context first. If the context is irrelevant to the query or does not contain the answer, ignore it.
+                - **No Hallucination:** If the question is legal-related but the context does not provide the specific answer, you must clearly state that you do not have enough information to answer that specific question. Do not use external legal knowledge or make up answers.
 
-                    3. **Response Style & Language:**
-                    - **Language:** Always respond in **Professional Thai (ภาษาไทยระดับทางการ/กึ่งทางการ)**.
-                    - **Tone:** Authoritative yet helpful and polite.
-                    - **Conciseness:** Be direct and concise. Do not repeat the question or provide redundant explanations. Provide the core answer immediately.
+                3. **Response Style & Language:**
+                - **Language:** Always respond in **Professional Thai (ภาษาไทยระดับทางการ/กึ่งทางการ)**.
+                - **Tone:** Authoritative yet helpful and polite.
+                - **Conciseness:** Be direct and concise. Do not repeat the question or provide redundant explanations. Provide the core answer immediately.
 
-                    4. **Interaction Handling:**
-                    - Use the history to maintain context for follow-up questions (e.g., if the user asks "And what about the penalty for that?", refer to the previous topic in the history).
+                4. **Interaction Handling:**
+                - Use the history to maintain context for follow-up questions (e.g., if the user asks "And what about the penalty for that?", refer to the previous topic in the history).
 
-                    ### Formatting
-                    - Use bullet points for lists of legal requirements or conditions.
-                    - Use bold text for key legal terms or specific Section/Article numbers.
+                ### Formatting
+                - Use bullet points for lists of legal requirements or conditions.
+                - Use bold text for key legal terms or specific Section/Article numbers.
                 
-                    """),
+                """),
                 ("human", "{query}")
             ]
         )
@@ -203,48 +228,53 @@ class Chatbot:
         )
         
         answer = await chain.ainvoke({})
-        refs = list({doc.metadata.get("source", "Unknown") for doc in retrieved_docs})
+        refs = list({doc.metadata.get("law_name") for doc in retrieved_docs})
         return answer, refs   
     
-    async def _handle_file_request(self, query: str, histories: list):
-
-        avaible_file = [] 
+    async def _handle_file_request(self, query: str, history: list):
+        parser = JsonOutputParser(pydantic_object=FileResponse)
         
+        # Define available files (ensure this is a string context for the prompt)
+        available_files_list = [
+            "แนวทางการปฏิบัติงาน_SAO.pdf",
+            "ระเบียบการเบิกจ่าย_2567.pdf"
+        ]
+        files_context = "\n".join(available_files_list)
+
         prompt = ChatPromptTemplate.from_messages([
             ("system", """
-             You are a smart file librarian.
-             
-             Your Goal:
-             1. Analyze the 'User Query' to see what file they want.
-             2. Look at the 'Available Files' in the context.
-             3. Extract the **exact filenames** (from the 'Filename' field) that match the user's request.
-             4. If the file is not in the list, return an empty list for 'target_files'.
-             5. Write a polite response in Thai (e.g., "here is the file you requested" or "sorry, I couldn't find that file").
-
-             """),
+            You are a smart "File Librarian" for the Office of the Ombudsman.
+            Respond in Formal Thai.
+            {format_instructions}
+            """),
             ("human", """
-             Available Files:
-             {context}
+            Available Files:
+            {context}
 
-             User Query: {query}
-             History : {history}
-             """)
+            User Query: {query}
+            History: {history}
+            """),
         ])
-        
         chain = (
             {
-                "context": lambda x: avaible_file,
-                "query": lambda x: query,
-                "history": lambda x: histories
+                    "context": lambda x: files_context,
+                    "query": lambda x: query,
+                    "history": lambda x: history,
+                    "format_instructions": lambda x: parser.get_format_instructions()
             }
-            | prompt 
-            | self.llm.get_model() 
-            | StrOutputParser()
+                | prompt 
+                | self.llm.get_model() 
+                | parser
         )
+    
+        try:
+            response = await chain.ainvoke({})
+            return response["answer_text"], response["target_files"]
+                
+        except Exception as e:
+            print(f"Error parsing JSON: {e}")
+            return "ขออภัยครับ เกิดข้อผิดพลาดในการค้นหาไฟล์", []    
         
-        answer = await chain.ainvoke({})
-        return answer, answer
-
     async def answer_question(self, user_id: int, session_id: str, query: str) -> RAGResponse: 
         history_messages = self._get_history_objects(user_id, session_id)
 
@@ -276,3 +306,5 @@ class Chatbot:
         )     
 
 chatbot = Chatbot()
+
+

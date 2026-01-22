@@ -4,14 +4,12 @@ from datetime import datetime
 
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
-from sentence_transformers import CrossEncoder
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field 
 from weaviate.classes.query import Filter 
 from src.app.llm.typhoon import TyphoonLLM
 from src.db.vector_store import get_vectorstore
-from ..utils import time_execution, Timer
+from ..utils import time_execution
 
 
 class SearchIntent(BaseModel):
@@ -36,7 +34,6 @@ class Retriever:
     def __init__(self):
         self.vectorstore = get_vectorstore() 
         self.llm = TyphoonLLM().get_model()
-        #self.reranker = CrossEncoder('BAAI/bge-reranker-v2-m3', device='cpu')
         self.parser = PydanticOutputParser(pydantic_object=SearchIntent)
         
     @time_execution
