@@ -9,9 +9,9 @@ import { getDocMeta } from "@/libs/doc_manage/getDocMeta";
 type AmendSource = "existing" | "upload";
 
 export default function UpdateDocPage() {
-  const params = useParams();
+  const params = useParams<{ doc_id?: string }>();
   const router = useRouter();
-  const baseDocId = params?.doc_id as string | undefined;
+  const baseDocId = params?.doc_id;
   const [baseDoc, setBaseDoc] = useState<Doc | null>(null);
   const [docs, setDocs] = useState<Doc[]>([]);
   const [source, setSource] = useState<AmendSource>("existing");
@@ -26,7 +26,7 @@ export default function UpdateDocPage() {
 
     getDocMeta(baseDocId).then((meta) => {
       setBaseDoc(meta as any);
-      setTitle(meta.title); 
+      setTitle(meta.title);
     });
 
     getDocuments().then(setDocs);
@@ -56,10 +56,18 @@ export default function UpdateDocPage() {
 
       const result = await updateSnapshot(baseDocId, amendDocId);
 
-      router.push(`/merger/${result.id}/view`);
+      if (!result?.id) {
+        throw new Error("ไม่พบ snapshot id ที่สร้างใหม่");
+      }
+
+      // ✅ FIX: redirect ไป compare
+      router.push(
+        `merger/compare?base=${encodeURIComponent(
+          baseDocId
+        )}&snapshot=${encodeURIComponent(result.id)}`
+      );
     } catch (e: any) {
       setError(e.message || "อัปเดตเอกสารไม่สำเร็จ");
-    } finally {
       setLoading(false);
     }
   };
@@ -73,6 +81,7 @@ export default function UpdateDocPage() {
       <h1 className="text-lg font-semibold">
         อัปเดตเอกสาร (Snapshot)
       </h1>
+
       <div className="space-y-2">
         <p className="text-sm font-medium">เอกสารฉบับแก้ไข</p>
         <div className="flex gap-4 text-sm">
@@ -94,11 +103,10 @@ export default function UpdateDocPage() {
           </label>
         </div>
       </div>
+
       {source === "existing" && (
         <div className="space-y-2">
-          <label className="text-sm font-medium">
-            เลือกเอกสาร
-          </label>
+          <label className="text-sm font-medium">เลือกเอกสาร</label>
           <select
             value={selectedDocId}
             onChange={(e) => setSelectedDocId(e.target.value)}
@@ -113,6 +121,7 @@ export default function UpdateDocPage() {
           </select>
         </div>
       )}
+
       {source === "upload" && (
         <>
           <div className="space-y-2">
@@ -126,6 +135,7 @@ export default function UpdateDocPage() {
               ค่าเริ่มต้นคือชื่อเอกสารต้นฉบับ
             </p>
           </div>
+
           <div className="space-y-2">
             <label className="text-sm font-medium">ไฟล์ PDF</label>
             <input
@@ -137,7 +147,9 @@ export default function UpdateDocPage() {
           </div>
         </>
       )}
+
       {error && <p className="text-sm text-red-500">{error}</p>}
+
       <div className="flex justify-end pt-4">
         <button
           disabled={loading}
@@ -145,7 +157,7 @@ export default function UpdateDocPage() {
           className="rounded-md bg-blue-600 px-6 py-2 text-sm text-white
                      hover:bg-blue-700 disabled:opacity-50"
         >
-          {loading ? "กำลังสร้าง Snapshot…" : "สร้าง Snapshot"}
+          สร้าง Snapshot
         </button>
       </div>
     </div>

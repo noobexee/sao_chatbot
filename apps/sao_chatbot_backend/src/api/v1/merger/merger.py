@@ -3,15 +3,10 @@ from src.api.v1.merger.doc_manage import find_doc_dir_by_id
 from src.app.llm.gemini import GeminiLLM
 from pathlib import Path
 import uuid
-from pydantic import BaseModel
-from src.api.v1.models.documnet import DocumentMeta
+from src.api.v1.models.documnet import DocumentMeta, MergeRequest
 
 router = APIRouter()
 MOCK_DIR = Path("mock")
-
-class MergeRequest(BaseModel):
-    base_doc_id: str
-    amend_doc_id: str
 
 def load_text_and_meta(doc_id: str) -> tuple[str, DocumentMeta, Path]:
     doc_dir = find_doc_dir_by_id(doc_id)
@@ -80,8 +75,32 @@ PROMPT_TEXT = """
 
 @router.put("/merge")
 def merge_documents(payload: MergeRequest):
-    base_text, base_meta, _ = load_text_and_meta(payload.base_doc_id)
+    base_text, base_meta, base_dir = load_text_and_meta(payload.base_doc_id)
     amend_text, amend_meta, _ = load_text_and_meta(payload.amend_doc_id)
+
+    base_meta.is_latest = False
+    (base_dir / "meta.json").write_text(
+        base_meta.model_dump_json(ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+    new_doc_id = str(uuid.uuid4())
+    merge_dir = MOCK_DIR / base_meta.type / new_doc_id
+    merge_dir.mkdir(parents=True, exist_ok=True)
+    merged_meta = DocumentMeta(
+        title=base_meta.title,
+        type=base_meta.type,
+        announce_date=payload.announce_date,
+        effective_date=payload.effective_date,
+        version=amend_meta.version,
+        is_snapshot=True,
+        is_latest=True,
+        is_first_version=False,
+    )
+    (merge_dir / "meta.json").write_text(
+        merged_meta.model_dump_json(ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+    (merge_dir / "status.txt").write_text("merging", encoding="utf-8")
     llm = GeminiLLM()
     response = llm.invoke(
         system_prompt="คุณเป็นผู้เชี่ยวชาญด้านกฎหมายและการรวมเอกสารตามหลักนิติกรรม",
@@ -93,34 +112,18 @@ def merge_documents(payload: MergeRequest):
         mime_types=["text/plain", "text/plain"],
     )
     merged_text = response.content
-    new_doc_id = str(uuid.uuid4())
-    merge_dir = MOCK_DIR / base_meta.type / new_doc_id
-    merge_dir.mkdir(parents=True, exist_ok=True)
-    merged_meta = DocumentMeta(
-        title=base_meta.title,
-        type=base_meta.type,
-        version=amend_meta.version,
-        valid_from=amend_meta.valid_from,
-        valid_until=base_meta.valid_until,
-        is_snapshot=True,
-        got_updated=True,
-        is_first_version=False,
-    )
-    (merge_dir / "text.txt").write_text(merged_text, encoding="utf-8")
-    (merge_dir / "status.txt").write_text("merged", encoding="utf-8")
-    (merge_dir / "meta.json").write_text(
-        merged_meta.model_dump_json(
-            ensure_ascii=False,
-            indent=2,
-        ),
+    (merge_dir / "text.txt").write_text(
+        merged_text,
         encoding="utf-8"
     )
+    (merge_dir / "status.txt").write_text("merged", encoding="utf-8")
     return {
         "status": "success",
         "id": new_doc_id,
         "type": merged_meta.type,
         "title": merged_meta.title,
         "is_snapshot": True,
+        "is_latest": True,
         "text_endpoint": f"/doc/{new_doc_id}/text",
         "meta_endpoint": f"/doc/{new_doc_id}/meta",
     }

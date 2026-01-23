@@ -1,12 +1,12 @@
 import { getBaseUrl } from "../config";
 
 export interface SaveDocTextPayload {
-  content: string; 
-  title: string;        
-  valid_from: string;   
-  type: string; 
-  valid_until?: string;  
-  version?: string;       
+  content: string;
+  title: string;
+  type: string;
+  announce_date: string;   // ISO or DD-MM-YYYY
+  effective_date: string;  // ISO or DD-MM-YYYY
+  version?: string;
 }
 
 export async function saveDocText(
@@ -14,18 +14,19 @@ export async function saveDocText(
   payload: SaveDocTextPayload
 ): Promise<void> {
   const form = new FormData();
+
   const file = new File(
     [payload.content],
     "text.txt",
     { type: "text/plain" }
   );
+
   form.append("file", file);
   form.append("title", payload.title);
-  form.append("valid_from", payload.valid_from);
   form.append("type", payload.type);
-  if (payload.valid_until) {
-    form.append("valid_until", payload.valid_until);
-  }
+  form.append("announce_date", payload.announce_date);
+  form.append("effective_date", payload.effective_date);
+
   if (payload.version) {
     form.append("version", payload.version);
   }

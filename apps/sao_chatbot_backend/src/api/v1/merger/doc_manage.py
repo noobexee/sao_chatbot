@@ -94,8 +94,9 @@ def upload_new_pdf(
     type: str = Form(...),
     title: str | None = Form(None),
     version: str | None = Form(None),
-    valid_from: date = Form(...),    
-    valid_until: date | None = Form(None),
+    announce_date: date = Form(...),
+    effective_date: date = Form(...),
+    is_first_version: bool = Form(...),
     file: UploadFile = File(...)
 ):
     if file.content_type != "application/pdf":
@@ -109,16 +110,16 @@ def upload_new_pdf(
     meta = DocumentMeta(
         title=derive_title(file, title),
         type=safe_type,
-        valid_from=valid_from,
-        valid_until=valid_until,
+        announce_date=announce_date,
+        effective_date=effective_date,
         version=version,
         is_snapshot=False,
-        got_updated=False,
-        is_first_version=True
+        is_latest=True,
+        is_first_version=is_first_version
     )
     (doc_dir / "meta.json").write_text(
-    meta.model_dump_json(ensure_ascii=False, indent=2),
-    encoding="utf-8",
+        meta.model_dump_json(ensure_ascii=False, indent=2),
+        encoding="utf-8"
     )
     (doc_dir / "text.txt").write_text("", encoding="utf-8")
     (doc_dir / "status.txt").write_text("queued", encoding="utf-8")
@@ -128,8 +129,9 @@ def upload_new_pdf(
         "type": safe_type,
         "title": meta.title,
         "version": meta.version,
-        "is_snapshot": False
+        "is_snapshot": meta.is_snapshot
     }
+
 
 @router.get("/doc/{doc_id}/status")
 def get_status(doc_id: str):
@@ -178,37 +180,32 @@ def get_text(doc_id: str):
 @router.put("/doc/{doc_id}/edit")
 def edit_data(
     doc_id: str,
-    title: str = Form(...),                
-    valid_from: str = Form(...),
-    type : str = Form(...),
-    valid_until: Optional[str] = Form(None),
-    version: Optional[str] = Form(None),   
-    file: UploadFile = File(...)             
+    title: str = Form(...),
+    type: str = Form(...),
+    announce_date: str = Form(...),
+    effective_date: str = Form(...),
+    version: Optional[str] = Form(None),
+    file: UploadFile = File(...)
 ):
     doc_dir = find_doc_dir_by_id(doc_id)
     if not doc_dir:
         raise HTTPException(404, "Document not found")
-
     if file.content_type != "text/plain":
         raise HTTPException(400, "Only .txt allowed")
-    
     (doc_dir / "text.txt").write_text(
         file.file.read().decode("utf-8"),
         encoding="utf-8"
     )
-
     meta = load_meta(doc_dir / "meta.json")
     meta.title = title
-    meta.valid_from = parse_date(valid_from)
-    meta.valid_until = parse_date(valid_until) if valid_until else None
-    meta.version = version
     meta.type = type
-    
+    meta.announce_date = parse_date(announce_date)
+    meta.effective_date = parse_date(effective_date)
+    meta.version = version
     (doc_dir / "meta.json").write_text(
         meta.model_dump_json(ensure_ascii=False, indent=2),
         encoding="utf-8"
     )
-
     return {"status": "updated", "doc_id": doc_id}
 
 @router.get("/doc/{doc_id}/meta", response_model=DocumentMeta)

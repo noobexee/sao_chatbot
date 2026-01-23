@@ -4,8 +4,9 @@ export interface UploadPayload {
   type: string;
   title?: string;
   version?: string;
-  valid_from?: string;  // DD-MM-YYYY or ISO (backend decides)
-  valid_until?: string;
+  announce_date: string;   // ISO or DD-MM-YYYY
+  effective_date: string;  // ISO or DD-MM-YYYY
+  is_first_version: boolean;
   file: File;
 }
 
@@ -14,9 +15,7 @@ export interface UploadResponse {
   type: string;
   title: string;
   version: string | null;
-  message: string;
-  status_endpoint: string;
-  text_endpoint: string;
+  is_snapshot: boolean;
 }
 
 export async function uploadDocument(
@@ -24,12 +23,16 @@ export async function uploadDocument(
   signal?: AbortSignal
 ): Promise<UploadResponse> {
   const formData = new FormData();
-
   formData.append("type", payload.type);
   if (payload.title) formData.append("title", payload.title);
   if (payload.version) formData.append("version", payload.version);
-  if (payload.valid_from) formData.append("valid_from", payload.valid_from);
-  if (payload.valid_until) formData.append("valid_until", payload.valid_until);
+  formData.append("announce_date", payload.announce_date);
+  formData.append("effective_date", payload.effective_date);
+  formData.append(
+    "is_first_version",
+    String(payload.is_first_version)
+  );
+
   formData.append("file", payload.file);
 
   const res = await fetch(`${getBaseUrl()}/api/v1/merger/doc`, {
@@ -38,6 +41,7 @@ export async function uploadDocument(
     cache: "no-store",
     signal,
   });
+
   if (!res.ok) {
     let message = "Upload failed";
     try {
