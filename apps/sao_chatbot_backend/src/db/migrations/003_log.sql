@@ -1,25 +1,25 @@
 -- Enable UUID extension if not already enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 1. Audit Sessions Table (Optional but recommended for linking logs to specific files/sessions)
--- This helps if you want to track which file was uploaded for a specific audit_id
-CREATE TABLE IF NOT EXISTS audit_sessions (
-    audit_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+-- 1. InitialReview Sessions Table (Optional but recommended for linking logs to specific files/sessions)
+-- This helps if you want to track which file was uploaded for a specific InitialReview_id
+CREATE TABLE IF NOT EXISTS InitialReview_sessions (
+    InitialReview_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id INTEGER, -- Link to your existing users table if needed
     file_name TEXT,  
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     file_data BYTEA
 );
 
--- 2. Audit Feedback Logs Table
+-- 2. InitialReview Feedback Logs Table
 -- Stores the specific feedback interactions (Thumb Up/Down, Edits)
-CREATE TABLE IF NOT EXISTS audit_feedback_logs (
+CREATE TABLE IF NOT EXISTS InitialReview_feedback_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     
-    -- audit_id: Links to the session. If you don't use the table above, just keep this as UUID or TEXT.
-    audit_id UUID NOT NULL, 
+    -- InitialReview_id: Links to the session. If you don't use the table above, just keep this as UUID or TEXT.
+    InitialReview_id UUID NOT NULL, 
     
-    -- criteria_id: The step number (e.g., 4, 6)
+    -- criteria_id: The criteria number (e.g., 4, 6)
     criteria_id INTEGER NOT NULL,
     
     -- timestamp: When the feedback occurred
@@ -42,6 +42,6 @@ CREATE TABLE IF NOT EXISTS audit_feedback_logs (
 );
 
 -- Create indexes for faster querying (analytics)
-CREATE INDEX IF NOT EXISTS idx_audit_logs_audit_id ON audit_feedback_logs(audit_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_criteria ON audit_feedback_logs(criteria_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_feedback_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_InitialReview_logs_InitialReview_id ON InitialReview_feedback_logs(InitialReview_id);
+CREATE INDEX IF NOT EXISTS idx_InitialReview_logs_criteria ON InitialReview_feedback_logs(criteria_id);
+CREATE INDEX IF NOT EXISTS idx_InitialReview_logs_created_at ON InitialReview_feedback_logs(created_at);

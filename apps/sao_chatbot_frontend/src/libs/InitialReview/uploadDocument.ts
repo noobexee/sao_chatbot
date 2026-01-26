@@ -2,7 +2,7 @@ import { getBaseUrl } from "../config";
 
 export interface UploadResponse {
     status: string;
-    audit_id: string;
+    InitialReview_id: string;
     message?: string;
 }
 
@@ -13,8 +13,8 @@ export async function uploadDocument(file: File): Promise<UploadResponse> {
     formData.append("file", file);
 
     try {
-        // ✅ แก้ URL ให้ตรงกับ Controller ใหม่ (/api/v1 + /audit + /upload)
-        const response = await fetch(`${baseUrl}/api/v1/audit/upload`, {
+        // ✅ แก้ URL ให้ตรงกับ Controller ใหม่ (/api/v1 + /InitialReview + /upload)
+        const response = await fetch(`${baseUrl}/api/v1/InitialReview/upload`, {
             method: "POST",
             body: formData,
         });

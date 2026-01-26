@@ -7,23 +7,13 @@ import tempfile
 from fastapi import UploadFile
 
 # Correct imports based on your structure
-from src.db.repositories.audit_repository import AuditRepository
-from src.app.llm import audit_agents
+from src.db.repositories.InitialReview_repository import InitialReviewRepository
+from src.app.llm import InitialReview_agents
 from src.app.llm.ocr import TyphoonOCRLoader
 
-class AuditService:
+class InitialReviewService:
     def __init__(self):
-        self.repo = AuditRepository()
-
-    async def process_upload(self, file: UploadFile) -> dict:
-        file_content = await file.read()
-        audit_id = str(uuid.uuid4())
-        file_name = file.filename or "unknown_file"
-        
-        success = self.repo.save_audit_session(audit_id, file_name, file_content)
-        if success:
-            return {"status": "success", "audit_id": audit_id}
-        raise Exception("Database Save Failed")
+        self.repo = InitialReviewRepository()
     
     async def analyze_document_logic(self, file: UploadFile) -> dict:
         temp_path = None
@@ -50,20 +40,20 @@ class AuditService:
             print(f"Extracted {len(extracted_text)} chars. Sending to Gemini Agents...")
             
             # 4. AI Agents
-            step4_task = asyncio.to_thread(audit_agents.audit_agents.agent_step4_sufficiency, extracted_text)
-            step6_task = asyncio.to_thread(audit_agents.audit_agents.agent_step6_complainant, extracted_text)
+            criteria4_task = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria4_sufficiency, extracted_text)
+            criteria6_task = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria6_complainant, extracted_text)
 
-            step4_ai_result, step6_ai_result = await asyncio.gather(step4_task, step6_task)
+            criteria4_ai_result, criteria6_ai_result = await asyncio.gather(criteria4_task, criteria6_task)
 
             # 5. Format Response
-            step4_response = self._format_ai_response(step4_ai_result, "step4")
-            step6_response = self._format_ai_response(step6_ai_result, "step6")
+            criteria4_response = self._format_ai_response(criteria4_ai_result, "criteria4")
+            criteria6_response = self._format_ai_response(criteria6_ai_result, "criteria6")
 
             return {
                 "status": "success",
                 "data": {
-                    "step4": step4_response,
-                    "step6": step6_response,
+                    "criteria4": criteria4_response,
+                    "criteria6": criteria6_response,
                     "raw_text": extracted_text[:200]
                 }
             }
@@ -74,16 +64,13 @@ class AuditService:
             # Cleanup temp file
             if temp_path and os.path.exists(temp_path):
                 os.remove(temp_path)
-    
-    def get_audit_info(self, audit_id: str):
-        return self.repo.get_audit_summary(audit_id)
 
-    def get_file_stream(self, audit_id: str):
-        info = self.repo.get_audit_summary(audit_id)
+    def get_file_stream(self, InitialReview_id: str):
+        info = self.repo.get_InitialReview_summary(InitialReview_id)
         if not info:
-             raise ValueError("Audit ID not found")
+             raise ValueError("InitialReview ID not found")
         
-        file_content = self.repo.get_audit_file_content(audit_id)
+        file_content = self.repo.get_InitialReview_file_content(InitialReview_id)
         if not file_content:
             raise FileNotFoundError("File content missing")
 
@@ -92,14 +79,14 @@ class AuditService:
         
         return io.BytesIO(file_content), media_type
 
-    def save_ai_feedback(self, audit_id, step_id, result):
-        return self.repo.save_step_log(audit_id, int(step_id), result)
+    def save_ai_feedback(self, InitialReview_id, criteria_id, result):
+        return self.repo.save_criteria_log(InitialReview_id, int(criteria_id), result)
 
-    def _format_ai_response(self, result: dict, step_type: str) -> dict:
+    def _format_ai_response(self, result: dict, criteria_type: str) -> dict:
         if not result:
             return {"status": "fail", "title": "AI Error", "details": {}, "people": []}
         
-        if step_type == "step6":
+        if criteria_type == "criteria6":
             people_list = result.get("people", [])
             has_complainant = any(p['role'] == 'ผู้ร้องเรียน' for p in people_list)
             return {"status": "success" if has_complainant else "fail", "title": "ผู้ร้องเรียน", "people": people_list}

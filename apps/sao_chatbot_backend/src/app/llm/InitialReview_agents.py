@@ -2,13 +2,10 @@ import json
 import re
 from src.app.llm.typhoon import TyphoonLLM
 
-# Initialize Typhoon Client
-# Assuming TyphoonLLM does not require parameters if they are in settings
-# or you can pass model_name if needed.
 client_wrapper = TyphoonLLM() 
-client = client_wrapper.get_model() # This returns the ChatOpenAI instance
+client = client_wrapper.get_model()
 
-class AuditAgents:
+class InitialReviewAgents:
     
     def _call_typhoon(self, system_prompt, user_text):
         try:
@@ -37,8 +34,8 @@ class AuditAgents:
             #     print(f"Raw Response: {response}") 
             return None
 
-    # --- AGENT 1: Step 4 (Detailed Sufficiency Check) ---
-    def agent_step4_sufficiency(self, text):
+    # --- AGENT 1: criteria 4 (Detailed Sufficiency Check) ---
+    def agent_criteria4_sufficiency(self, text):
         system_prompt = """
         คุณคือ 'ผู้เชี่ยวชาญด้านการตรวจสอบเรื่องร้องเรียนของ สตง.' หน้าที่คือวิเคราะห์องค์ประกอบของเรื่องร้องเรียน
         
@@ -75,8 +72,8 @@ class AuditAgents:
         """
         return self._call_typhoon(system_prompt, text)
 
-    # --- AGENT 2: Step 6 (Specific Person Check) ---
-    def agent_step6_complainant(self, text):
+    # --- AGENT 2: criteria 6 (Specific Person Check) ---
+    def agent_criteria6_complainant(self, text):
         system_prompt = """
         คุณคือ 'นายทะเบียน' หน้าที่คือตรวจสอบรายชื่อบุคคลในเอกสาร
         
@@ -89,8 +86,8 @@ class AuditAgents:
         """
         return self._call_typhoon(system_prompt, text)
 
-    # --- AGENT 3: Step 2 (Jurisdiction Check - NEW!) ---
-    def agent_step2_jurisdiction(self, text):
+    # --- AGENT 3: criteria 2 (Jurisdiction Check - NEW!) ---
+    def agent_criteria2_jurisdiction(self, text):
         pass
 
-audit_agents = AuditAgents()
+InitialReview_agents = InitialReviewAgents()
