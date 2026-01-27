@@ -7,6 +7,18 @@ router = APIRouter(tags=["InitialReview Process"])
 def get_InitialReview_service():
     return InitialReviewService()
 
+# --- 1. OCR Only Endpoint ---
+@router.post("/ocr")
+async def ocr_document(
+    file: UploadFile = File(...),
+    service: InitialReviewService = Depends(get_InitialReview_service)
+):
+    try:
+        result = await service.ocr_document_logic(file)
+        return result
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 # --- 2. Analyze Document (AI) ---
 @router.post("/analyze")
 async def analyze_document(

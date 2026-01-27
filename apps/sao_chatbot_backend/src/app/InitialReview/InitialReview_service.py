@@ -6,7 +6,6 @@ import asyncio
 import tempfile
 from fastapi import UploadFile
 
-# Correct imports based on your structure
 from src.db.repositories.InitialReview_repository import InitialReviewRepository
 from src.app.llm import InitialReview_agents
 from src.app.llm.ocr import TyphoonOCRLoader
@@ -15,37 +14,54 @@ class InitialReviewService:
     def __init__(self):
         self.repo = InitialReviewRepository()
     
-    async def analyze_document_logic(self, file: UploadFile) -> dict:
+    # --- Helper to extract text (Avoids code duplication) ---
+    async def _extract_text_from_file(self, file: UploadFile) -> str:
         temp_path = None
         try:
-            # 1. Define suffix FIRST
-            # We get the file extension (e.g., ".pdf") to ensure temp file has correct type
             suffix = os.path.splitext(file.filename or "")[1]
             if not suffix:
-                suffix = ".tmp" # Fallback if no extension
+                suffix = ".tmp"
 
-            # 2. Use suffix in NamedTemporaryFile
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                 shutil.copyfileobj(file.file, tmp)
                 temp_path = tmp.name
 
-            # 3. Process with OCR
             loader = TyphoonOCRLoader(file_path=temp_path)
-            
-            # สั่ง Load เอกสาร
             documents = loader.load()
-            
-            # รวมข้อความจากทุกหน้าเข้าด้วยกัน
             extracted_text = "\n\n".join([doc.page_content for doc in documents])
+            
+            return extracted_text
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    # --- OCR Only Logic ---
+    async def ocr_document_logic(self, file: UploadFile) -> dict:
+        try:
+            extracted_text = await self._extract_text_from_file(file)
+            return {
+                "status": "success",
+                "text": extracted_text,
+                "page_count": 0 # TyphoonOCRLoader might not give page count easily, defaulting 0
+            }
+        except Exception as e:
+            print(f"Error in ocr_document_logic: {e}")
+            raise e
+
+    # --- Full Analysis Logic ---
+    async def analyze_document_logic(self, file: UploadFile) -> dict:
+        try:
+            # 1. Extract Text
+            extracted_text = await self._extract_text_from_file(file)
             print(f"Extracted {len(extracted_text)} chars. Sending to Typhoon Agents...")
             
-            # 4. AI Agents
+            # 2. AI Agents
             criteria4_task = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria4_sufficiency, extracted_text)
             criteria6_task = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria6_complainant, extracted_text)
 
             criteria4_ai_result, criteria6_ai_result = await asyncio.gather(criteria4_task, criteria6_task)
 
-            # 5. Format Response
+            # 3. Format Response
             criteria4_response = self._format_ai_response(criteria4_ai_result, "criteria4")
             criteria6_response = self._format_ai_response(criteria6_ai_result, "criteria6")
 
@@ -60,10 +76,6 @@ class InitialReviewService:
         except Exception as e:
             print(f"Error in analyze_document_logic: {e}")
             raise e
-        finally:
-            # Cleanup temp file
-            if temp_path and os.path.exists(temp_path):
-                os.remove(temp_path)
 
     def get_file_stream(self, InitialReview_id: str):
         info = self.repo.get_InitialReview_summary(InitialReview_id)
