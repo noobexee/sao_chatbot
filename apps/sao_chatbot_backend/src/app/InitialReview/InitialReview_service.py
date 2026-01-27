@@ -37,7 +37,7 @@ class InitialReviewService:
             
             # รวมข้อความจากทุกหน้าเข้าด้วยกัน
             extracted_text = "\n\n".join([doc.page_content for doc in documents])
-            print(f"Extracted {len(extracted_text)} chars. Sending to Gemini Agents...")
+            print(f"Extracted {len(extracted_text)} chars. Sending to Typhoon Agents...")
             
             # 4. AI Agents
             criteria4_task = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria4_sufficiency, extracted_text)

@@ -31,7 +31,7 @@ export default function InitialReviewUploadPage() {
     <div className="flex h-full flex-col bg-white items-center justify-center p-8">
       <div className="w-full max-w-4xl text-center space-y-8">
         <h1 className="text-3xl font-bold text-gray-800">Initial Review Process</h1>
-        <p className="text-gray-500">อัปโหลดเอกสารเพื่อเริ่มการตรวจสอบเบื้องต้น (Single Session)</p>
+        <p className="text-gray-500">อัปโหลดเอกสารเพื่อเริ่มการตรวจสอบเบื้องต้น</p>
         
         <div
           onClick={() => fileInputRef.current?.click()}
