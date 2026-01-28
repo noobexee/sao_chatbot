@@ -2,12 +2,25 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getDocuments, Doc } from "@/libs/doc_manage/getDocuments";
+import { getDocuments, DocumentMeta } from "@/libs/doc_manage/getDocuments";
+
+/**
+ * Backend returns:
+ * {
+ *   id,
+ *   ...DocumentMeta,
+ *   status
+ * }
+ */
+type DocumentWithStatus = DocumentMeta & {
+  id: string;
+  status: string;
+};
 
 export default function MergerHomePage() {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [docs, setDocs] = useState<Doc[]>([]);
+  const [docs, setDocs] = useState<DocumentWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -16,7 +29,7 @@ export default function MergerHomePage() {
       try {
         setLoading(true);
         const data = await getDocuments();
-        setDocs(data);
+        setDocs(data as DocumentWithStatus[]);
       } catch {
         setError("ไม่สามารถโหลดรายการเอกสารได้");
       } finally {
@@ -60,34 +73,51 @@ export default function MergerHomePage() {
             <p className="text-sm text-gray-500">ไม่พบเอกสาร</p>
           )}
 
-          {filteredDocs.map((doc) => (
-            <div
-              key={doc.id}
-              className="flex items-center justify-between
-                         rounded-md border border-gray-200 px-4 py-3"
-            >
-              <div>
-                <p className="text-sm font-medium text-gray-800">
-                  {doc.title}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {doc.type} • ฉบับที่ {doc.version} • ใช้ตั้งแต่ {doc.valid_from}
-                </p>
-              </div>
+          {filteredDocs.map((doc) => {
+            const canUpdate = doc.status === "done";
 
-              <button
-                disabled={doc.status !== "done"}
-                onClick={() => router.push(`/merger/${doc.id}/update`)}
-                className={`rounded-full border px-4 py-2 text-sm
-                  ${doc.status === "done"
-                    ? "border-gray-200 hover:bg-gray-50"
-                    : "border-gray-100 text-gray-400 cursor-not-allowed"
-                  }`}
+            return (
+              <div
+                key={doc.id}
+                className="flex items-center justify-between
+                           rounded-md border border-gray-200 px-4 py-3"
               >
-                Update document
-              </button>
-            </div>
-          ))}
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium text-gray-800">
+                    {doc.title}
+                  </p>
+
+                  <p className="text-xs text-gray-500">
+                    {doc.type} • ฉบับที่ {doc.version}
+                  </p>
+
+                  <p className="text-xs text-gray-400">
+                    ใช้ตั้งแต่ {doc.effective_date}
+                  </p>
+
+                  {doc.status !== "done" && (
+                    <p className="text-xs text-blue-500">
+                      กำลังประมวลผลเอกสาร…
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  disabled={!canUpdate}
+                  onClick={() => router.push(`/merger/${doc.id}/update`)}
+                  className={`rounded-full border px-4 py-2 text-sm
+                    transition
+                    ${
+                      canUpdate
+                        ? "border-gray-200 hover:bg-gray-50"
+                        : "border-gray-100 text-gray-400 cursor-not-allowed"
+                    }`}
+                >
+                  Update document
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

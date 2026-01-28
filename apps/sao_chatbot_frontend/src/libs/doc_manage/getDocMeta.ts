@@ -1,16 +1,15 @@
 import { getBaseUrl } from "../config";
 
 export interface DocMeta {
-  title: string;
-  type: string;
-  announce_date: string;   // ISO date (YYYY-MM-DD)
-  effective_date: string;  // ISO date (YYYY-MM-DD)
-  version: string | null;
-  is_snapshot: boolean;
-  is_latest: boolean;
-  is_first_version: boolean;
+  title: string;                 // law_name
+  type: string;                  // doc_type
+  announce_date: string;         // ISO date (YYYY-MM-DD)
+  effective_date: string;        // ISO date (YYYY-MM-DD)
+  version: number | null;        // 1 for first version, +1 per amendment
+  is_snapshot: boolean;          // generated from merge (no pdf)
+  is_latest: boolean;            // latest version flag
+  related_form_id: string[] | null; // related uploaded forms
 }
-
 
 export async function getDocMeta(docId: string): Promise<DocMeta> {
   const res = await fetch(

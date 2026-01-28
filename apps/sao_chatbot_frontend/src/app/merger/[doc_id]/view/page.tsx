@@ -5,8 +5,14 @@ import { useParams } from "next/navigation";
 import { getDocMeta, DocMeta } from "@/libs/doc_manage/getDocMeta";
 import { getDocText } from "@/libs/doc_manage/getDocText";
 import { checkHasPdf } from "@/libs/doc_manage/getDocOriginal";
-import { getDocOriginalPreview, PreviewFile } from "@/libs/doc_manage/getOriginalPreview";
-import { getDocStatus, DocStatusResponse } from "@/libs/doc_manage/getDocStatus";
+import {
+  getDocOriginalPreview,
+  PreviewFile,
+} from "@/libs/doc_manage/getOriginalPreview";
+import {
+  getDocStatus,
+  DocStatusResponse,
+} from "@/libs/doc_manage/getDocStatus";
 import { saveDocText } from "@/libs/doc_manage/updateDocument";
 import { deleteDocument } from "@/libs/doc_manage/deleteDoc";
 
@@ -15,16 +21,19 @@ type ViewMode = "pdf" | "text";
 export default function ViewDocumentPage() {
   const params = useParams<{ doc_id: string }>();
   const docId = params?.doc_id;
+
   const [meta, setMeta] = useState<DocMeta | null>(null);
   const [editMeta, setEditMeta] = useState<DocMeta | null>(null);
   const [text, setText] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [hasPdf, setHasPdf] = useState(true);
   const [mode, setMode] = useState<ViewMode>("pdf");
+
   const [status, setStatus] = useState("queued");
   const [page, setPage] = useState<number | null>(null);
   const [totalPages, setTotalPages] = useState<number | null>(null);
   const [message, setMessage] = useState<string | undefined>();
+
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +41,7 @@ export default function ViewDocumentPage() {
 
   function isoToThaiDate(value?: string) {
     if (!value) return "";
+
     const monthMap: Record<string, string> = {
       "01": "ม.ค.",
       "02": "ก.พ.",
@@ -61,9 +71,7 @@ export default function ViewDocumentPage() {
       return "";
     }
 
-    const monthThai = monthMap[mm];
-    if (!monthThai) return "";
-    return `${dd} ${monthThai} พ.ศ. ${yyyy}`;
+    return `${dd} ${monthMap[mm]} พ.ศ. ${yyyy}`;
   }
 
   useEffect(() => {
@@ -146,7 +154,6 @@ export default function ViewDocumentPage() {
         content: draft,
         title: editMeta.title,
         type: editMeta.type,
-        version: editMeta.version ?? undefined,
         announce_date: editMeta.announce_date,
         effective_date: editMeta.effective_date ?? undefined,
       });
@@ -154,6 +161,9 @@ export default function ViewDocumentPage() {
       setMeta(editMeta);
       setText(draft);
       setEditing(false);
+
+      // 🔔 notify sidebar
+      window.dispatchEvent(new Event("documents:updated"));
     } catch {
       setError("บันทึกข้อมูลไม่สำเร็จ");
     } finally {
@@ -167,12 +177,7 @@ export default function ViewDocumentPage() {
 
     try {
       await deleteDocument(docId);
-      setStatus("deleted");
-      setMeta(null);
-      setEditMeta(null);
-      setText(null);
-      setDraft("");
-      setCurrentFile(null);
+      window.dispatchEvent(new Event("documents:updated"));
     } catch {
       setError("ลบเอกสารไม่สำเร็จ");
     }
@@ -181,7 +186,7 @@ export default function ViewDocumentPage() {
   if (!docId) {
     return <div className="p-6 text-red-500">Document ID not found</div>;
   }
-
+  /* UI BELOW — UNCHANGED */
   return (
     <div className="flex h-full flex-col p-4 md:p-6">
       {/* ===== Header ===== */}
@@ -209,13 +214,6 @@ export default function ViewDocumentPage() {
                   value={editMeta?.type ?? ""}
                   onChange={(e) =>
                     setEditMeta((m) => m && { ...m, type: e.target.value })
-                  }
-                />
-                <input
-                  className="border rounded px-2"
-                  value={editMeta?.version ?? ""}
-                  onChange={(e) =>
-                    setEditMeta((m) => m && { ...m, version: e.target.value })
                   }
                 />
                 <input

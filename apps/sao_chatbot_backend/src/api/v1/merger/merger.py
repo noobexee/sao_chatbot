@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException
-from src.api.v1.merger.doc_manage import find_doc_dir_by_id
-from src.app.llm.gemini import GeminiLLM
 from pathlib import Path
 import uuid
-from src.api.v1.models.documnet import DocumentMeta, MergeRequest
+from src.api.v1.merger.doc_manage import find_doc_dir_by_id
+from src.app.llm.gemini import GeminiLLM
+from src.app.manager.document import DocumentMeta, MergeRequest
 
 router = APIRouter()
 MOCK_DIR = Path("mock")
@@ -12,12 +12,15 @@ def load_text_and_meta(doc_id: str) -> tuple[str, DocumentMeta, Path]:
     doc_dir = find_doc_dir_by_id(doc_id)
     if not doc_dir:
         raise HTTPException(404, f"Document {doc_id} not found")
+
     text_path = doc_dir / "text.txt"
     meta_path = doc_dir / "meta.json"
+
     if not text_path.exists():
         raise HTTPException(400, f"text.txt missing for {doc_id}")
     if not meta_path.exists():
         raise HTTPException(400, f"meta.json missing for {doc_id}")
+
     meta = DocumentMeta.model_validate_json(
         meta_path.read_text(encoding="utf-8")
     )
@@ -75,48 +78,65 @@ PROMPT_TEXT = """
 
 @router.put("/merge")
 def merge_documents(payload: MergeRequest):
+    # Load documents
     base_text, base_meta, base_dir = load_text_and_meta(payload.base_doc_id)
-    amend_text, amend_meta, _ = load_text_and_meta(payload.amend_doc_id)
+    amend_text, amend_meta, amend_dir = load_text_and_meta(payload.amend_doc_id)
 
+    # Mark base as not latest
     base_meta.is_latest = False
     (base_dir / "meta.json").write_text(
         base_meta.model_dump_json(ensure_ascii=False, indent=2),
         encoding="utf-8"
     )
+
+    # Prepare snapshot dir
     new_doc_id = str(uuid.uuid4())
     merge_dir = MOCK_DIR / base_meta.type / new_doc_id
     merge_dir.mkdir(parents=True, exist_ok=True)
+
     merged_meta = DocumentMeta(
         title=base_meta.title,
         type=base_meta.type,
-        announce_date=payload.announce_date,
-        effective_date=payload.effective_date,
+        announce_date=amend_meta.announce_date,
+        effective_date=amend_meta.effective_date,
         version=amend_meta.version,
         is_snapshot=True,
         is_latest=True,
-        is_first_version=False,
+        related_form_id=[
+            payload.base_doc_id,
+            payload.amend_doc_id
+        ]
     )
+
     (merge_dir / "meta.json").write_text(
         merged_meta.model_dump_json(ensure_ascii=False, indent=2),
         encoding="utf-8"
     )
     (merge_dir / "status.txt").write_text("merging", encoding="utf-8")
-    llm = GeminiLLM()
-    response = llm.invoke(
-        system_prompt="คุณเป็นผู้เชี่ยวชาญด้านกฎหมายและการรวมเอกสารตามหลักนิติกรรม",
-        prompt=PROMPT_TEXT,
-        txt_files=[
-            base_text.encode("utf-8"),
-            amend_text.encode("utf-8"),
-        ],
-        mime_types=["text/plain", "text/plain"],
-    )
-    merged_text = response.content
+
+    # MERGE LOGIC
+    if payload.merge_mode == "replace_all":
+        merged_text = amend_text
+    else:
+        llm = GeminiLLM()
+        response = llm.invoke(
+            system_prompt="คุณเป็นผู้เชี่ยวชาญด้านกฎหมายและการรวมเอกสารตามหลักนิติกรรม",
+            prompt=PROMPT_TEXT,
+            txt_files=[
+                base_text.encode("utf-8"),
+                amend_text.encode("utf-8"),
+            ],
+            mime_types=["text/plain", "text/plain"],
+        )
+        merged_text = response.content
+
+    # Save result
     (merge_dir / "text.txt").write_text(
         merged_text,
         encoding="utf-8"
     )
     (merge_dir / "status.txt").write_text("merged", encoding="utf-8")
+
     return {
         "status": "success",
         "id": new_doc_id,
@@ -124,6 +144,7 @@ def merge_documents(payload: MergeRequest):
         "title": merged_meta.title,
         "is_snapshot": True,
         "is_latest": True,
+        "related_form_id": merged_meta.related_form_id,
         "text_endpoint": f"/doc/{new_doc_id}/text",
         "meta_endpoint": f"/doc/{new_doc_id}/meta",
     }
