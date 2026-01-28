@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Image from "next/image";
 import { useSearchParams, useParams } from "next/navigation";
 import { useInitialReview } from "../InitialReview-context";
 
@@ -98,7 +97,6 @@ export default function InitialReviewProjectPage() {
   // --- 1. OCR Logic (Run Automatically when file is loaded) ---
   useEffect(() => {
     const runOCR = async () => {
-        // Run only if we have a file and no text yet
         if (!currentFile?.fileObj) return;
         if (docText) return; 
 
@@ -112,7 +110,6 @@ export default function InitialReviewProjectPage() {
             setDocText(result.text);
             setDraftText(result.text);
             
-            // Auto-switch to text view so user can see/edit
             setViewMode("text"); 
         } catch (err: any) {
             console.error("OCR Error:", err);
@@ -127,23 +124,18 @@ export default function InitialReviewProjectPage() {
 
   // --- 2. Start Analysis Logic (Modified to use Edited Text) ---
   const handleStartAnalysis = async () => {
-    // Validation
     if (!draftText.trim()) { 
         alert("No text to analyze. Please wait for OCR or type manually."); 
         return; 
     }
 
     setShowChecklist(true);
-    // Set processing UI
     setCriterias(prev => prev.map(c => (c.id === 4 || c.id === 6) ? { ...c, isProcessing: true } : c));
 
     try {
-        // [KEY CHANGE]: Create a Blob/File from the DRAFT text
-        // This tricks the backend into thinking it received a file upload
         const blob = new Blob([draftText], { type: "text/plain" });
         const fileToAnalyze = new File([blob], `${currentFile?.name || 'doc'}_edited.txt`, { type: "text/plain" });
 
-        // Call the imported analyzeDocument function from libs
         const result = await analyzeDocument(fileToAnalyze);
 
         if (result.status === "success" || result.data) {
@@ -189,7 +181,6 @@ export default function InitialReviewProjectPage() {
       for (const criteria of criteriasToSave) {
           let resultData = criteria.ocrResult || {};
           if(criteria.type === 'manual') {
-             // @ts-ignore - adjusting for flexible type
              resultData = { ...resultData, manual_selection: criteria.selectedOption, status: criteria.status };
           }
           await saveAiResult({
@@ -424,7 +415,7 @@ export default function InitialReviewProjectPage() {
             <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-bold text-[#1e293b] mb-2">เริ่มต้นการตรวจสอบด้วย AI</h2>
               <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-                ระบบจะวิเคราะห์ข้อมูลจากข้อความที่แสดงด้านซ้ายมือ (Text) <br/>
+                ระบบจะวิเคราะห์ข้อมูลจากข้อความที่แสดง <br/>
                 กรุณาตรวจสอบความถูกต้องของข้อความก่อนเริ่มวิเคราะห์
               </p>
               <button 
