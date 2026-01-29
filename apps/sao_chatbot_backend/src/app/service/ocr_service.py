@@ -3,6 +3,7 @@ from src.app.llm.ocr import TyphoonOCRLoader
 from typing import List
 from langchain_core.documents import Document
 
+
 def typhoon_docs_to_text(docs: List[Document]) -> str:
     pages = []
 
@@ -15,12 +16,18 @@ def typhoon_docs_to_text(docs: List[Document]) -> str:
 
     return "\n".join(pages)
 
+
 def write_status(doc_dir: Path, status: str):
     (doc_dir / "status.txt").write_text(status, encoding="utf-8")
 
-def run_ocr_job(doc_dir: Path):
+
+def run_ocr_job(pdf_path: Path):
+    """
+    pdf_path = {doc_type}/{doc_id}/{derived_title}.pdf
+    """
+    doc_dir = pdf_path.parent
+
     text_path = doc_dir / "text.txt"
-    pdf_path = doc_dir / "original.pdf"
     pages_path = doc_dir / "pages.txt"
 
     def progress_cb(current: int, total: int):
@@ -31,7 +38,7 @@ def run_ocr_job(doc_dir: Path):
 
         loader = TyphoonOCRLoader(
             file_path=str(pdf_path),
-            progress_cb=progress_cb
+            progress_cb=progress_cb,
         )
 
         documents = loader.load()
@@ -40,7 +47,7 @@ def run_ocr_job(doc_dir: Path):
 
         text_path.write_text(
             typhoon_docs_to_text(documents),
-            encoding="utf-8"
+            encoding="utf-8",
         )
 
         pages_path.write_text(str(len(documents)), encoding="utf-8")
@@ -48,5 +55,7 @@ def run_ocr_job(doc_dir: Path):
 
     except Exception as e:
         write_status(doc_dir, "error")
-        text_path.write_text(f"OCR failed: {str(e)}", encoding="utf-8")
-
+        text_path.write_text(
+            f"OCR failed: {str(e)}",
+            encoding="utf-8",
+        )

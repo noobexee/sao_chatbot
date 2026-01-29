@@ -3,16 +3,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { uploadDocument } from "@/libs/doc_manage/uploadDocument";
-import { getDocuments, Doc } from "@/libs/doc_manage/getDocuments";
-import { getDocStatus } from "@/libs/doc_manage/getDocStatus";
+import { getDocuments, DocumentMeta } from "@/libs/doc_manage/getDocuments";
+import { getDocStatus, DocStatusResponse } from "@/libs/doc_manage/getDocStatus";
 
+/* ---------- helpers (unchanged) ---------- */
 function formatDDMMYYYY(value: string) {
   const digits = value.replace(/\D/g, "").slice(0, 8);
   const parts: string[] = [];
+
   if (digits.length >= 2) parts.push(digits.slice(0, 2));
   else if (digits.length > 0) parts.push(digits);
+
   if (digits.length >= 4) parts.push(digits.slice(2, 4));
   else if (digits.length > 2) parts.push(digits.slice(2));
+
   if (digits.length > 4) parts.push(digits.slice(4));
   return parts.join("-");
 }
@@ -21,28 +25,41 @@ function ddmmyyyyToIso(value?: string): string | undefined {
   if (!value) return undefined;
   const [dd, mm, yyyy] = value.split("-");
   if (!dd || !mm || !yyyy) return undefined;
+  if (dd.length !== 2 || mm.length !== 2 || yyyy.length !== 4) return undefined;
   return `${yyyy}-${mm}-${dd}`;
 }
 
 export default function NewDocumentPage() {
   const router = useRouter();
-  const [file, setFile] = useState<File | null>(null);
-  const [docs, setDocs] = useState<Doc[]>([]);
+
+  const [mainFile, setMainFile] = useState<File | null>(null);
+  const [optionalFiles, setOptionalFiles] = useState<File[]>([]);
+  const [docs, setDocs] = useState<DocumentMeta[]>([]);
+
   const [type, setType] = useState("");
   const [customType, setCustomType] = useState("");
   const [title, setTitle] = useState("");
-  const [version, setVersion] = useState("");
   const [validFrom, setValidFrom] = useState("");
   const [validUntil, setValidUntil] = useState("");
+  const [isFirstVersion, setIsFirstVersion] = useState(true);
+
+  /* NEW */
+  const [hasPrevious, setHasPrevious] = useState(false);
+  const [previousDocId, setPreviousDocId] = useState<string>("");
+
   const [loading, setLoading] = useState(false);
+  const [uploadDone, setUploadDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const [docId, setDocId] = useState<string | null>(null);
+  const [status, setStatus] = useState<string>("queued");
+  const [page, setPage] = useState<number | null>(null);
+  const [totalPages, setTotalPages] = useState<number | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
+  /* ---------- sidebar data (unchanged) ---------- */
   useEffect(() => {
-    getDocuments()
-      .then(setDocs)
-      .catch(() => setDocs([]));
+    getDocuments().then(setDocs).catch(() => setDocs([]));
   }, []);
 
   const types = useMemo(() => {
@@ -53,74 +70,180 @@ export default function NewDocumentPage() {
 
   const resolvedType =
     type === "__new__" ? customType.trim() : type.trim();
-  
+
+  /* ---------- auto fill from previous doc ---------- */
+  useEffect(() => {
+    if (!previousDocId) return;
+
+    const prev = docs.find((d) => d.id === previousDocId);
+    if (!prev) return;
+
+    setTitle(prev.title ?? "");
+    setType(prev.type ?? "");
+    setIsFirstVersion(false);
+  }, [previousDocId, docs]);
+
+  /* ---------- submit ---------- */
   const onSubmit = async () => {
-    if (!file || !resolvedType) {
-      setError("กรุณาเลือกไฟล์ PDF และประเภทเอกสาร");
+    if (!mainFile || !resolvedType) {
+      setError("กรุณาเลือกไฟล์เอกสารหลัก (PDF) และประเภทเอกสาร");
       return;
     }
+
+    const announceIso = ddmmyyyyToIso(validFrom);
+    const effectiveIso = ddmmyyyyToIso(validUntil);
+
+    if (!announceIso || !effectiveIso) {
+      setError("รูปแบบวันที่ไม่ถูกต้อง (DD-MM-YYYY)");
+      return;
+    }
+
+    const prev = previousDocId
+      ? docs.find((d) => d.id === previousDocId)
+      : null;
+
     setLoading(true);
     setError(null);
-    if (validFrom && !ddmmyyyyToIso(validFrom)) {
-      setError("รูปแบบวันที่ใช้ตั้งแต่ไม่ถูกต้อง");
-      return;
-    }
-    if (validUntil && !ddmmyyyyToIso(validUntil)) {
-      setError("รูปแบบวันที่ใช้ถึงไม่ถูกต้อง");
-      return;
-    }
+
     try {
       const res = await uploadDocument({
-        file,
-        type: resolvedType,
+        doc_type: resolvedType,
         title: title || undefined,
-        version: version || undefined,
-        valid_from: ddmmyyyyToIso(validFrom),
-        valid_until: ddmmyyyyToIso(validUntil),
+        announce_date: announceIso,
+        effective_date: effectiveIso,
+        is_first_version: isFirstVersion,
+        version: prev?.version ? prev.version + 1 : 1,
+        main_file: mainFile,
+        related_files: optionalFiles.length ? optionalFiles : undefined,
       });
+
+      window.dispatchEvent(new Event("documents:updated"));
+
       setDocId(res.id);
-      setStatusMessage("กำลังประมวลผลเอกสาร…");
+      setUploadDone(true);
+      setStatus("queued");
+      setStatusMessage("อัปโหลดสำเร็จ กำลังประมวลผลเอกสาร…");
     } catch (err: any) {
-      setError(err.message || "อัปโหลดไม่สำเร็จ");
+      setError(err?.message || "อัปโหลดไม่สำเร็จ");
       setLoading(false);
     }
   };
+
+  /* ---------- OCR polling (unchanged) ---------- */
   useEffect(() => {
     if (!docId) return;
+
     let timer: NodeJS.Timeout;
+
     const poll = async () => {
-      try {
-        const res = await getDocStatus(docId);
-        setStatusMessage(res.message ?? "กำลังประมวลผล…");
-        if (res.status === "done" || res.status === "merged") {
-          router.replace(`/merger/${docId}/view`);
-          return;
-        }
-        timer = setTimeout(poll, 3000);
-      } catch {
-        setError("ไม่สามารถตรวจสอบสถานะเอกสารได้");
+      const res: DocStatusResponse = await getDocStatus(docId);
+
+      setStatus(res.status);
+      setPage(res.current_page ?? null);
+      setTotalPages(res.total_pages ?? null);
+      setStatusMessage(res.message ?? "กำลังประมวลผล…");
+
+      if (res.status === "done" || res.status === "merged") {
+        window.dispatchEvent(new Event("documents:updated"));
+        router.replace(`/merger/${docId}/view`);
+        return;
       }
+
+      timer = setTimeout(poll, 3000);
     };
+
     poll();
     return () => clearTimeout(timer);
   }, [docId, router]);
+
   return (
     <div className="h-full w-full p-6 max-w-3xl space-y-6">
       <h1 className="text-lg font-semibold text-gray-900">
         เพิ่มเอกสารใหม่
       </h1>
 
-      {!docId && (
+      {!uploadDone && (
         <>
+          {/* ===== Has previous doc ===== */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              เอกสารนี้เคยมีในระบบหรือไม่ ?
+            </label>
+            <div className="flex gap-4 text-sm">
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  checked={!hasPrevious}
+                  onChange={() => {
+                    setHasPrevious(false);
+                    setPreviousDocId("");
+                    setIsFirstVersion(true);
+                  }}
+                />
+                ไม่เคย
+              </label>
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  checked={hasPrevious}
+                  onChange={() => setHasPrevious(true)}
+                />
+                เคยมีแล้ว
+              </label>
+            </div>
+          </div>
+
+          {hasPrevious && (
+            <div className="space-y-1">
+              <label className="text-sm font-medium">
+                เลือกเอกสารเดิม
+              </label>
+              <select
+                value={previousDocId}
+                onChange={(e) => setPreviousDocId(e.target.value)}
+                className="w-full rounded-md border px-3 py-2 text-sm"
+              >
+                <option value="">— เลือกเอกสารเดิม —</option>
+                {docs.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.title} (v{d.version})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* ===== Main file ===== */}
           <div className="space-y-1">
-            <label className="text-sm font-medium">ไฟล์ PDF *</label>
+            <label className="text-sm font-medium">
+              ไฟล์เอกสารหลัก (PDF เท่านั้น) *
+            </label>
             <input
               type="file"
               accept="application/pdf"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              onChange={(e) =>
+                setMainFile(e.target.files?.[0] ?? null)
+              }
               className="block w-full text-sm"
             />
           </div>
+
+          {/* ===== Optional files ===== */}
+          <div className="space-y-1">
+            <label className="text-sm font-medium">
+              ไฟล์ที่เกี่ยวข้อง (ถ้ามี)
+            </label>
+            <input
+              type="file"
+              multiple
+              onChange={(e) =>
+                setOptionalFiles(Array.from(e.target.files ?? []))
+              }
+              className="block w-full text-sm"
+            />
+          </div>
+
+          {/* ===== Type ===== */}
           <div className="space-y-1">
             <label className="text-sm font-medium">ประเภทเอกสาร *</label>
             <select
@@ -130,11 +253,14 @@ export default function NewDocumentPage() {
             >
               <option value="">— เลือกประเภท —</option>
               {types.map((t) => (
-                <option key={t} value={t}>{t}</option>
+                <option key={t} value={t}>
+                  {t}
+                </option>
               ))}
               <option value="__new__">+ เพิ่มประเภทใหม่</option>
             </select>
           </div>
+
           {type === "__new__" && (
             <input
               value={customType}
@@ -143,6 +269,8 @@ export default function NewDocumentPage() {
               className="w-full rounded-md border px-3 py-2 text-sm"
             />
           )}
+
+          {/* ===== Title ===== */}
           <div className="space-y-1">
             <label className="text-sm font-medium">ชื่อเอกสาร</label>
             <input
@@ -152,18 +280,12 @@ export default function NewDocumentPage() {
               className="w-full rounded-md border px-3 py-2 text-sm"
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium">ฉบับที่</label>
-              <input
-                value={version}
-                onChange={(e) => setVersion(e.target.value)}
-                className="w-full rounded-md border px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
+
+          {/* ===== Dates ===== */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
               <label className="text-sm font-medium">
-                ใช้ตั้งแต่ (DD-MM-YYYY)
+                วันประกาศ (DD-MM-YYYY) *
               </label>
               <input
                 value={validFrom}
@@ -174,9 +296,10 @@ export default function NewDocumentPage() {
                 className="w-full rounded-md border px-3 py-2 text-sm"
               />
             </div>
-            <div>
+
+            <div className="space-y-1">
               <label className="text-sm font-medium">
-                ใช้ถึง (DD-MM-YYYY)
+                วันมีผลบังคับใช้ (DD-MM-YYYY) *
               </label>
               <input
                 value={validUntil}
@@ -188,9 +311,13 @@ export default function NewDocumentPage() {
               />
             </div>
           </div>
-          {error && <p className="text-sm text-red-500">{error}</p>}
+
+          {error && (
+            <p className="text-sm text-red-500 pt-1">{error}</p>
+          )}
+
           <button
-            disabled={loading}
+            disabled={loading || !mainFile || !resolvedType}
             onClick={onSubmit}
             className="rounded-md bg-blue-600 px-6 py-2 text-sm text-white disabled:opacity-50"
           >
@@ -198,14 +325,56 @@ export default function NewDocumentPage() {
           </button>
         </>
       )}
-      {docId && (
-        <div className="space-y-2">
-          <p className="text-sm text-gray-600">{statusMessage}</p>
-          <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
-            <div className="h-full w-1/2 bg-blue-500 animate-pulse" />
-          </div>
+
+      {uploadDone && (
+        <div className="rounded-md border border-green-200 bg-green-50 p-4">
+          <p className="text-sm font-medium text-green-800">
+            ✅ อัปโหลดเอกสารเรียบร้อยแล้ว
+          </p>
+          <p className="text-sm text-green-700">
+            ระบบกำลังประมวลผลเอกสาร กรุณารอสักครู่…
+          </p>
         </div>
       )}
+
+      {docId && (
+        <OCRProgress
+          status={status}
+          page={page}
+          totalPages={totalPages}
+          message={statusMessage}
+        />
+      )}
+    </div>
+  );
+}
+
+function OCRProgress({
+  status,
+  page,
+  totalPages,
+  message,
+}: {
+  status: string;
+  page: number | null;
+  totalPages: number | null;
+  message?: string | null;
+}) {
+  const percent =
+    page && totalPages ? Math.round((page / totalPages) * 100) : 0;
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-gray-600">
+        {message}
+        {page && totalPages && <> • หน้า {page}/{totalPages}</>}
+      </p>
+      <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-blue-500 transition-all"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
     </div>
   );
 }

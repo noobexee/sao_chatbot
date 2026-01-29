@@ -5,10 +5,16 @@ import { useParams } from "next/navigation";
 import { getDocMeta, DocMeta } from "@/libs/doc_manage/getDocMeta";
 import { getDocText } from "@/libs/doc_manage/getDocText";
 import { checkHasPdf } from "@/libs/doc_manage/getDocOriginal";
-import { getDocOriginalPreview, PreviewFile } from "@/libs/doc_manage/getOriginalPreview";
-import { getDocStatus, DocStatusResponse } from "@/libs/doc_manage/getDocStatus";
+import {
+  getDocOriginalPreview,
+  PreviewFile,
+} from "@/libs/doc_manage/getOriginalPreview";
+import {
+  getDocStatus,
+  DocStatusResponse,
+} from "@/libs/doc_manage/getDocStatus";
 import { saveDocText } from "@/libs/doc_manage/updateDocument";
-import { deleteDocument } from "@/libs/doc_manage/deleteDoc"; // <-- เพิ่ม
+import { deleteDocument } from "@/libs/doc_manage/deleteDoc";
 
 type ViewMode = "pdf" | "text";
 
@@ -22,51 +28,51 @@ export default function ViewDocumentPage() {
   const [draft, setDraft] = useState("");
   const [hasPdf, setHasPdf] = useState(true);
   const [mode, setMode] = useState<ViewMode>("pdf");
-  const [status, setStatus] = useState<string>("queued");
+
+  const [status, setStatus] = useState("queued");
   const [page, setPage] = useState<number | null>(null);
   const [totalPages, setTotalPages] = useState<number | null>(null);
   const [message, setMessage] = useState<string | undefined>();
+
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<PreviewFile | null>(null);
 
-function isoToThaiDate(value?: string) {
-  if (!value) return "";
-  const monthMap: Record<string, string> = {
-    "01": "ม.ค.",
-    "02": "ก.พ.",
-    "03": "มี.ค.",
-    "04": "เม.ย.",
-    "05": "พ.ค.",
-    "06": "มิ.ย.",
-    "07": "ก.ค.",
-    "08": "ส.ค.",
-    "09": "ก.ย.",
-    "10": "ต.ค.",
-    "11": "พ.ย.",
-    "12": "ธ.ค.",
-  };
-  let yyyy = "";
-  let mm = "";
-  let dd = "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    [yyyy, mm, dd] = value.split("-");
+  function isoToThaiDate(value?: string) {
+    if (!value) return "";
+
+    const monthMap: Record<string, string> = {
+      "01": "ม.ค.",
+      "02": "ก.พ.",
+      "03": "มี.ค.",
+      "04": "เม.ย.",
+      "05": "พ.ค.",
+      "06": "มิ.ย.",
+      "07": "ก.ค.",
+      "08": "ส.ค.",
+      "09": "ก.ย.",
+      "10": "ต.ค.",
+      "11": "พ.ย.",
+      "12": "ธ.ค.",
+    };
+
+    let yyyy = "";
+    let mm = "";
+    let dd = "";
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      [yyyy, mm, dd] = value.split("-");
+    } else if (/^\d{8}$/.test(value)) {
+      yyyy = value.slice(0, 4);
+      mm = value.slice(4, 6);
+      dd = value.slice(6, 8);
+    } else {
+      return "";
+    }
+
+    return `${dd} ${monthMap[mm]} พ.ศ. ${yyyy}`;
   }
-  else if (/^\d{8}$/.test(value)) {
-    yyyy = value.slice(0, 4);
-    mm = value.slice(4, 6);
-    dd = value.slice(6, 8);
-  } else {
-    return "";
-  }
-  const monthThai = monthMap[mm];
-  if (!monthThai) return "";
-  return `${dd} ${monthThai} พ.ศ. ${yyyy}`;
-}
-
-
-
 
   useEffect(() => {
     if (!docId) return;
@@ -129,7 +135,7 @@ function isoToThaiDate(value?: string) {
 
         timer = setTimeout(poll, 3000);
       } catch {
-        setError("ไม่พบเอกสารนี้ในระบบ");
+        setError("ไม่สามารถตรวจสอบสถานะ OCR ได้");
       }
     };
 
@@ -139,6 +145,7 @@ function isoToThaiDate(value?: string) {
 
   const onSave = async () => {
     if (!docId || !editMeta) return;
+
     setSaving(true);
     setError(null);
 
@@ -146,15 +153,17 @@ function isoToThaiDate(value?: string) {
       await saveDocText(docId, {
         content: draft,
         title: editMeta.title,
-        version: editMeta.version ?? undefined,
-        valid_from: editMeta.valid_from,
         type: editMeta.type,
-        valid_until: editMeta.valid_until ?? undefined,
+        announce_date: editMeta.announce_date,
+        effective_date: editMeta.effective_date ?? undefined,
       });
 
       setMeta(editMeta);
       setText(draft);
       setEditing(false);
+
+      // 🔔 notify sidebar
+      window.dispatchEvent(new Event("documents:updated"));
     } catch {
       setError("บันทึกข้อมูลไม่สำเร็จ");
     } finally {
@@ -168,12 +177,7 @@ function isoToThaiDate(value?: string) {
 
     try {
       await deleteDocument(docId);
-      setMeta(null);
-      setEditMeta(null);
-      setText(null);
-      setDraft("");
-      setCurrentFile(null);
-      setStatus("deleted");
+      window.dispatchEvent(new Event("documents:updated"));
     } catch {
       setError("ลบเอกสารไม่สำเร็จ");
     }
@@ -182,9 +186,10 @@ function isoToThaiDate(value?: string) {
   if (!docId) {
     return <div className="p-6 text-red-500">Document ID not found</div>;
   }
-
+  /* UI BELOW — UNCHANGED */
   return (
     <div className="flex h-full flex-col p-4 md:p-6">
+      {/* ===== Header ===== */}
       <div className="border-b bg-white px-6 py-4 space-y-2">
         {editing ? (
           <input
@@ -195,7 +200,9 @@ function isoToThaiDate(value?: string) {
             className="w-full border rounded px-3 py-1 text-sm"
           />
         ) : (
-          <h1 className="text-base font-semibold">{meta?.title ?? "—"}</h1>
+          <h1 className="text-base font-semibold">
+            {meta?.title ?? "—"}
+          </h1>
         )}
 
         {meta && (
@@ -210,26 +217,28 @@ function isoToThaiDate(value?: string) {
                   }
                 />
                 <input
+                  type="date"
                   className="border rounded px-2"
-                  value={editMeta?.version ?? ""}
+                  value={editMeta?.announce_date ?? ""}
                   onChange={(e) =>
-                    setEditMeta((m) => m && { ...m, version: e.target.value })
+                    setEditMeta(
+                      (m) =>
+                        m && { ...m, announce_date: e.target.value }
+                    )
                   }
                 />
                 <input
                   type="date"
                   className="border rounded px-2"
-                  value={editMeta?.valid_from ?? ""}
+                  value={editMeta?.effective_date ?? ""}
                   onChange={(e) =>
-                    setEditMeta((m) => m && { ...m, valid_from: e.target.value })
-                  }
-                />
-                <input
-                  type="date"
-                  className="border rounded px-2"
-                  value={editMeta?.valid_until ?? ""}
-                  onChange={(e) =>
-                    setEditMeta((m) => m && { ...m, valid_until: e.target.value })
+                    setEditMeta(
+                      (m) =>
+                        m && {
+                          ...m,
+                          effective_date: e.target.value,
+                        }
+                    )
                   }
                 />
               </>
@@ -237,17 +246,22 @@ function isoToThaiDate(value?: string) {
               <>
                 {meta.type && <span>ประเภท {meta.type}</span>}
                 {meta.version && <span>ฉบับที่ {meta.version}</span>}
-                {meta.valid_from && (
-                  <span>ใช้ตั้งแต่ {isoToThaiDate(meta.valid_from)}</span>
+                {meta.announce_date && (
+                  <span>
+                    ประกาศ {isoToThaiDate(meta.announce_date)}
+                  </span>
                 )}
-                {meta.valid_until && (
-                  <span>ถึง {isoToThaiDate(meta.valid_until)}</span>
+                {meta.effective_date && (
+                  <span>
+                    มีผลใช้ {isoToThaiDate(meta.effective_date)}
+                  </span>
                 )}
               </>
             )}
           </div>
         )}
 
+        {/* Mode + Actions */}
         <div className="flex justify-between items-center pt-2">
           <div className="flex rounded-full border overflow-hidden">
             <button
@@ -266,7 +280,9 @@ function isoToThaiDate(value?: string) {
             <button
               onClick={() => setMode("text")}
               className={`px-4 py-1 text-sm ${
-                mode === "text" ? "bg-gray-200 font-medium" : ""
+                mode === "text"
+                  ? "bg-gray-200 font-medium"
+                  : ""
               }`}
             >
               Text
@@ -318,6 +334,7 @@ function isoToThaiDate(value?: string) {
         </div>
       </div>
 
+      {/* ===== Content ===== */}
       <div className="flex-1 overflow-hidden bg-gray-50">
         {mode === "pdf" && hasPdf && (
           <iframe
@@ -337,7 +354,9 @@ function isoToThaiDate(value?: string) {
               />
             )}
 
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            {error && (
+              <p className="text-sm text-red-500">{error}</p>
+            )}
 
             {(status === "done" || status === "merged") &&
               (editing ? (
@@ -347,7 +366,9 @@ function isoToThaiDate(value?: string) {
                   className="w-full h-[70vh] border rounded p-4 font-mono text-sm"
                 />
               ) : (
-                <pre className="whitespace-pre-wrap text-sm">{text}</pre>
+                <pre className="whitespace-pre-wrap text-sm">
+                  {text}
+                </pre>
               ))}
           </div>
         )}
@@ -374,7 +395,9 @@ function OCRProgress({
     <div className="max-w-md space-y-2">
       <p className="text-sm text-gray-600">
         {message}
-        {page && totalPages && <> • หน้า {page}/{totalPages}</>}
+        {page && totalPages && (
+          <> • หน้า {page}/{totalPages}</>
+        )}
       </p>
       <div className="h-2 w-full rounded bg-gray-200">
         <div
