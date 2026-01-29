@@ -1,4 +1,3 @@
-import asyncio
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
@@ -6,9 +5,9 @@ from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field 
-from weaviate.classes.query import Filter 
+from src.app.chatbot.utils.embedding import BGEEmbedder
 from src.app.llm.typhoon import TyphoonLLM
-from src.db.vector_store import get_vectorstore
+from src.db.vector_store import load_faiss_index
 from ..utils import time_execution
 
 
@@ -32,7 +31,7 @@ class SearchIntent(BaseModel):
 
 class Retriever:
     def __init__(self):
-        self.vectorstore = get_vectorstore() 
+        self.embedder = BGEEmbedder(model_name="BAAI/bge-m3")
         self.llm = TyphoonLLM().get_model()
         self.parser = PydanticOutputParser(pydantic_object=SearchIntent)
         
@@ -98,40 +97,28 @@ class Retriever:
                 "search_date": current_date
             }
 
-    def _build_filters(self, search_date: str, law_name: str = None, doc_type: str = None):
-        filters = []
-        if "T" not in search_date:
-            rfc3339_date = f"{search_date}T00:00:00Z"
-        else:
-            rfc3339_date = search_date
+    def similarity_search(self, query_text, embedder, k=5):
+        index, metadata_list = load_faiss_index("storage/faiss_index")
+        query_vector = embedder.embed_query(query_text)
+
+        distances, indices = index.search(query_vector, k)
+        
+        results = []
+        for i, idx in enumerate(indices[0]):
+            if idx == -1: continue
             
-        date_filter = (
-            Filter.by_property("valid_from").less_or_equal(rfc3339_date) & 
-            Filter.by_property("valid_until").greater_or_equal(rfc3339_date)
-        )
-        filters.append(date_filter)
-
-        if law_name:
-            filters.append(Filter.by_property("law_name").like(f"*{law_name}*"))
-
-        if doc_type:
-             filters.append(Filter.by_property("doc_type").like(f"*{doc_type}*"))
-
-        composite_filter = filters[0]
-        for f in filters[1:]:
-            composite_filter = composite_filter & f
+            match = metadata_list[idx]
             
-        return composite_filter
-
-
-    def _rerank_documents(self, user_query: str, docs: List[Document], top_k: int = 3) -> List[Document]:
-        if not docs: return []
-        pairs = [[user_query, doc.page_content] for doc in docs]
-        scores = self.reranker.predict(pairs)
-        doc_score_pairs = list(zip(docs, scores))
-        doc_score_pairs.sort(key=lambda x: x[1], reverse=True)
-        return [doc for doc, score in doc_score_pairs[:top_k]]
-
+            results.append({
+                "score": float(distances[0][i]),
+                "law_name": match.get("law_name"),
+                "section": match.get("id"),
+                "text": match.get("text"),
+                "version": match.get("version"),
+                "effective_date": match.get("effective_date")
+            })
+            
+        return results
 
     async def retrieve(self, user_query: str, history: List = None, k: int = 10, search_date: str = None) -> List[Document]:
         """
@@ -173,10 +160,10 @@ class Retriever:
         final_docs = unique_candidates[:k]
         return final_docs
         """
-        docs = self.vectorstore.similarity_search(
+        docs = self.similarity_search(
             user_query, 
+            self.embedder,
             5, 
-            alpha=1,
         )
         return docs
         
