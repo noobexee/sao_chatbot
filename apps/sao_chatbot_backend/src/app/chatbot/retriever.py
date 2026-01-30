@@ -89,39 +89,68 @@ class Retriever:
             return response.dict()
 
         except Exception as e:
-            print(f"⚠️ Query Parsing Failed: {e}")
+            print(f" Query Parsing Failed: {e}")
             return {
                 "rewritten_query": user_query,
                 "law_name": None,
                 "doc_type": None,
                 "search_date": current_date
             }
-    def filter_search(self, search_result, search_date) :
-        return None
 
+    def filter_search(self, candidates, k, search_date=None):
+        if not search_date:
+            target_dt = datetime.now()
+        else:
+            try:
+                target_dt = datetime.strptime(search_date, "%Y-%m-%d")
+            except ValueError:
+                target_dt = datetime.now()
 
-    def similarity_search(self, query_text, embedder, k=5):
+        filtered_results = []
+        print(target_dt)
+
+        for match in candidates:
+            eff_str = match.get("effective_date") or "1900-01-01"
+            exp_str = match.get("expire_date") or "9999-12-31"
+            
+            try:
+                eff_dt = datetime.strptime(eff_str, "%Y-%m-%d")
+                exp_dt = datetime.strptime(exp_str, "%Y-%m-%d")
+            except ValueError:
+                continue
+
+            if eff_dt <= target_dt <= exp_dt:
+                filtered_results.append(match)
+            
+            if len(filtered_results) >= k:
+                break
+                
+        return filtered_results
+
+    def similarity_search(self, query_text, embedder, k=5, search_date=None):
         index, metadata_list = load_faiss_index("storage/faiss_index")
         query_vector = embedder.embed_query(query_text)
 
-        distances, indices = index.search(query_vector, k)
+        distances, indices = index.search(query_vector, k * 10)
         
-        results = []
+        candidates = []
         for i, idx in enumerate(indices[0]):
             if idx == -1: continue
             
             match = metadata_list[idx]
-            
-            results.append({
+            candidates.append({
                 "score": float(distances[0][i]),
                 "law_name": match.get("law_name"),
                 "section": match.get("id"),
                 "text": match.get("text"),
                 "version": match.get("version"),
-                "effective_date": match.get("effective_date")
+                "effective_date": match.get("effective_date"),
+                "expire_date": match.get("expire_date")
             })
-            
-        return results
+
+        answer = self.filter_search(candidates, k, search_date)
+
+        return answer
 
     async def retrieve(self, user_query: str, history: List = None, k: int = 10, search_date: str = None) -> List[Document] :
 
@@ -131,11 +160,7 @@ class Retriever:
             5, 
         )
         
-          
         return search_result
         
         
-        
-        #final_docs = self._rerank_documents(user_query, unique_candidates, top_k=5)
-
         

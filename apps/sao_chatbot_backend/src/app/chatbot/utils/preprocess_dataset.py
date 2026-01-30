@@ -36,7 +36,7 @@ def run_indexing_pipeline(metadata_folder: str):
     print(f"\nStarting Bulk Indexing for Folder: {metadata_folder}")
     embedder = BGEEmbedder()
     
-    json_files = list(Path(metadata_folder).glob("**/*_metadata.json"))
+    json_files = list(Path(metadata_folder).glob("**/*.json"))
     
     if not json_files:
         print(" No files found to index.")
