@@ -18,29 +18,8 @@ services:
     networks:
       - db-net
 
-  vector-db:
-    image: semitechnologies/weaviate:1.34.0
-    container_name: vector_db
-    restart: always
-    ports:
-      - "${WEAVIATE_PORT}:${WEAVIATE_PORT}"
-      - "50051:50051"
-    environment:
-      QUERY_DEFAULTS_LIMIT: 25
-      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
-      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
-      DEFAULT_VECTORIZER_MODULE: 'none'
-      CLUSTER_HOSTNAME: 'weaviate-node'
-    volumes:
-      - weaviate-data:/var/lib/weaviate
-      - ./database/vector_db/config.json:/var/lib/weaviate/config.json
-    networks:
-      - db-net
-
 volumes:
   postgres-data:
-    driver: local
-  weaviate-data:
     driver: local
 
 networks:

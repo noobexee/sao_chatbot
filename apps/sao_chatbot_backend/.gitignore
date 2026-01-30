@@ -9,8 +9,7 @@ __pycache__/
 .env
 .env.*
 
-
-/vector_store/
+/storage/*
 
 .DS_Store
 .AppleDouble
@@ -28,3 +27,5 @@ desktop.ini
 data/
 
 test.ipynb
+metadata/
+test/

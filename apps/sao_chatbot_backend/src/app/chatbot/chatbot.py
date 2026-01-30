@@ -38,7 +38,7 @@ class Chatbot:
         formatted_chunks = []
         i = 1
         for doc in docs:
-            formatted_chunks.append(f"Chunk {i} Title: {doc.metadata['law_name']} \n{doc.page_content}")
+            formatted_chunks.append(f"Chunk {i} Title: {doc.get('law_name')} \n{doc.get('text')}")
             i += 1
             
         return "\n\n---\n\n".join(formatted_chunks)
@@ -228,13 +228,12 @@ class Chatbot:
         )
         
         answer = await chain.ainvoke({})
-        refs = list({doc.metadata.get("law_name") for doc in retrieved_docs})
+        refs = list({doc.get("law_name") for doc in retrieved_docs})
         return answer, refs   
     
     async def _handle_file_request(self, query: str, history: list):
         parser = JsonOutputParser(pydantic_object=FileResponse)
         
-        # Define available files (ensure this is a string context for the prompt)
         available_files_list = [
             "แนวทางการปฏิบัติงาน_SAO.pdf",
             "ระเบียบการเบิกจ่าย_2567.pdf"

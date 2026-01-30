@@ -1,4 +1,3 @@
-import asyncio
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
@@ -6,9 +5,9 @@ from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field 
-from weaviate.classes.query import Filter 
+from src.app.chatbot.utils.embedding import BGEEmbedder
 from src.app.llm.typhoon import TyphoonLLM
-from src.db.vector_store import get_vectorstore
+from src.db.vector_store import load_faiss_index
 from ..utils import time_execution
 
 
@@ -32,7 +31,7 @@ class SearchIntent(BaseModel):
 
 class Retriever:
     def __init__(self):
-        self.vectorstore = get_vectorstore() 
+        self.embedder = BGEEmbedder(model_name="BAAI/bge-m3")
         self.llm = TyphoonLLM().get_model()
         self.parser = PydanticOutputParser(pydantic_object=SearchIntent)
         
@@ -97,88 +96,43 @@ class Retriever:
                 "doc_type": None,
                 "search_date": current_date
             }
-
-    def _build_filters(self, search_date: str, law_name: str = None, doc_type: str = None):
-        filters = []
-        if "T" not in search_date:
-            rfc3339_date = f"{search_date}T00:00:00Z"
-        else:
-            rfc3339_date = search_date
-            
-        date_filter = (
-            Filter.by_property("valid_from").less_or_equal(rfc3339_date) & 
-            Filter.by_property("valid_until").greater_or_equal(rfc3339_date)
-        )
-        filters.append(date_filter)
-
-        if law_name:
-            filters.append(Filter.by_property("law_name").like(f"*{law_name}*"))
-
-        if doc_type:
-             filters.append(Filter.by_property("doc_type").like(f"*{doc_type}*"))
-
-        composite_filter = filters[0]
-        for f in filters[1:]:
-            composite_filter = composite_filter & f
-            
-        return composite_filter
+    def filter_search(self, search_result, search_date) :
+        return None
 
 
-    def _rerank_documents(self, user_query: str, docs: List[Document], top_k: int = 3) -> List[Document]:
-        if not docs: return []
-        pairs = [[user_query, doc.page_content] for doc in docs]
-        scores = self.reranker.predict(pairs)
-        doc_score_pairs = list(zip(docs, scores))
-        doc_score_pairs.sort(key=lambda x: x[1], reverse=True)
-        return [doc for doc, score in doc_score_pairs[:top_k]]
+    def similarity_search(self, query_text, embedder, k=5):
+        index, metadata_list = load_faiss_index("storage/faiss_index")
+        query_vector = embedder.embed_query(query_text)
 
-
-    async def retrieve(self, user_query: str, history: List = None, k: int = 10, search_date: str = None) -> List[Document]:
-        """
-        analysis_result = await self.generate_search_queries(user_query, history)
+        distances, indices = index.search(query_vector, k)
         
-        search_queries = analysis_result.get("rewritten_query", "")
-        extracted_date = analysis_result.get("search_date")
-        law_name_filter = analysis_result.get("law_name")
-        doc_type_filter = analysis_result.get("doc_type")
+        results = []
+        for i, idx in enumerate(indices[0]):
+            if idx == -1: continue
+            
+            match = metadata_list[idx]
+            
+            results.append({
+                "score": float(distances[0][i]),
+                "law_name": match.get("law_name"),
+                "section": match.get("id"),
+                "text": match.get("text"),
+                "version": match.get("version"),
+                "effective_date": match.get("effective_date")
+            })
+            
+        return results
 
-        final_date = search_date if search_date else (extracted_date)
-        print(f"search date: {final_date}")
+    async def retrieve(self, user_query: str, history: List = None, k: int = 10, search_date: str = None) -> List[Document] :
 
-        try:
-            time_filter = self._build_filters(
-                search_date=final_date,
-                law_name=law_name_filter,
-                doc_type=doc_type_filter
-            )
-            if law_name_filter or doc_type_filter:
-                print(f"🎯 Sniper Filter Active: Law='{law_name_filter}', Type='{doc_type_filter}'")
-        except ValueError as e:
-            print(f"⚠️ Filter Error: {e}")
-            time_filter = None
-
-        all_docs = []
-        print(f"Searching: {search_queries} @ {final_date}")
-        for query in search_queries:
-            docs = self.vectorstore.similarity_search(
-                query, 
-                k=k, 
-                alpha=0.6,
-                filters=time_filter 
-            )
-            all_docs.extend(docs)
-        unique_docs_map = {doc.page_content: doc for doc in all_docs}
-        unique_candidates = list(unique_docs_map.values())
-        print(f"Found {len(unique_candidates)} candidates. Re-ranking...")
-        final_docs = unique_candidates[:k]
-        return final_docs
-        """
-        docs = self.vectorstore.similarity_search(
+        search_result = self.similarity_search(
             user_query, 
+            self.embedder,
             5, 
-            alpha=1,
         )
-        return docs
+        
+          
+        return search_result
         
         
         
