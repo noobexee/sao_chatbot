@@ -34,13 +34,11 @@ class BGEEmbedder:
         self.model_name = model_name
         self._embedding_dimension = 1024
 
-        # Auto-detect device
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         print(f"Loading BGE-M3 model: {model_name}")
         print(f"Device: {self.device}")
 
-        # Load model
         self.model = SentenceTransformer(model_name)
         self.model.to(self.device)
 
