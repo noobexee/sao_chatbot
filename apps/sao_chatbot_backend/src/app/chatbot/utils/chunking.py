@@ -47,7 +47,7 @@ def extract_header_and_footer(text: str) -> Tuple[str, List[str], List[str]]:
             
     return law_name, references, body_lines
 
-def parse_guideline(
+def chunk_by_size(
     text: str, 
     law_name: Optional[str] = None,
     announce_date: Optional[str] = None,
@@ -89,7 +89,7 @@ def parse_guideline(
         })
     return json_results
 
-def parse_regulation(
+def chunk_by_clause(
     text: str, 
     law_name: Optional[str] = None,
     announce_date: Optional[str] = None,
@@ -100,8 +100,7 @@ def parse_regulation(
 ) -> List[Dict]:
     ext_law_name, ext_refs, lines = extract_header_and_footer(text)
     final_law_name = law_name if law_name is not None else ext_law_name
-    
-    # Patterns for Thai legal structure
+
     clause_pattern = re.compile(r"^(ข้อ\s+[๐-๙]+)")
     chapter_pattern = re.compile(r"^หมวด\s+[๐-๙]+")
     part_pattern = re.compile(r"^ส่วนที่\s+[๐-๙]+")
@@ -138,6 +137,7 @@ def parse_regulation(
             "doc_type": "ระเบียบ",
             "announce_date": announce_date,
             "effective_date": effective_date,
+            "expire_date": expire_date,
             "version": version,
             "metadata": {
                 "หมวด": chap, 
@@ -170,48 +170,6 @@ def parse_regulation(
         
     return json_results
 
-def parse_order(
-    text: str, 
-    law_name: Optional[str] = None,
-    announce_date: Optional[str] = None,
-    effective_date: Optional[str] = None,
-    expire_date: Optional[str] = None,
-    version: int = 1,
-    document_id: Optional[str] = None,
-) -> List[Dict]:
-    ext_law_name, ext_refs, lines = extract_header_and_footer(text)
-    final_law_name = law_name if law_name is not None else ext_law_name
-    full_body_text = "\n".join(lines).strip()
-
-    splitter = RecursiveCharacterTextSplitter(
-        separators=["\n\n", "\n", " ", ""],
-        chunk_size=2000,
-        chunk_overlap=200
-    )
-    
-    text_chunks = splitter.split_text(full_body_text)
-    json_results = []
-    
-    for i, chunk_text in enumerate(text_chunks):
-        json_results.append({
-            "id": f"Chunk_{i+1}",
-            "document_id": document_id,
-            "law_name": final_law_name,
-            "text": chunk_text,
-            "doc_type": "คำสั่ง",
-            "announce_date": announce_date,
-            "effective_date": effective_date,
-            "expire_date": expire_date,
-            "version": version,
-            "metadata": {
-                "หมวด": "บททั่วไป",
-                "ส่วน": "",
-                "chunk_index": i
-            }
-        })
-        
-    return json_results
-
 def process_folders(input_root: str, output_root: str, metadata_file: str = "metadata.json"):
     input_path = Path(input_root)
     output_path = Path(output_root)
@@ -223,12 +181,12 @@ def process_folders(input_root: str, output_root: str, metadata_file: str = "met
         print(f"Loaded metadata for {len(metadata_lookup)} files.")
     
     folder_map = {
-        "ระเบียบ": parse_regulation,
-        "คำสั่ง": parse_order,
-        "แนวทาง": parse_guideline 
+        "ระเบียบ": chunk_by_clause,
+        "คำสั่ง": chunk_by_size,
+        "แนวทาง": chunk_by_size
     }
     
-    for folder_name, parse_func in folder_map.items():
+    for folder_name, chunk_func in folder_map.items():
         input_dir = input_path / folder_name
         if not input_dir.exists(): continue 
             
@@ -238,14 +196,12 @@ def process_folders(input_root: str, output_root: str, metadata_file: str = "met
         
         for file_path in input_dir.glob("*.txt"):
             try:
-                # Retrieve metadata for the file
                 file_meta = metadata_lookup.get(file_path.name, {})
                 
                 with open(file_path, 'r', encoding='utf-8') as f:
                     content = f.read()
-                
-                # Pass parameters dynamically from metadata.json
-                chunks = parse_func(
+
+                chunks = chunk_func(
                     text=content,
                     law_name=file_meta.get("law_name"),
                     announce_date=file_meta.get("announce"), 

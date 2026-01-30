@@ -96,6 +96,9 @@ class Retriever:
                 "doc_type": None,
                 "search_date": current_date
             }
+    def filter_search(self, search_result, search_date) :
+        return None
+
 
     def similarity_search(self, query_text, embedder, k=5):
         index, metadata_list = load_faiss_index("storage/faiss_index")
@@ -120,52 +123,16 @@ class Retriever:
             
         return results
 
-    async def retrieve(self, user_query: str, history: List = None, k: int = 10, search_date: str = None) -> List[Document]:
-        """
-        analysis_result = await self.generate_search_queries(user_query, history)
-        
-        search_queries = analysis_result.get("rewritten_query", "")
-        extracted_date = analysis_result.get("search_date")
-        law_name_filter = analysis_result.get("law_name")
-        doc_type_filter = analysis_result.get("doc_type")
+    async def retrieve(self, user_query: str, history: List = None, k: int = 10, search_date: str = None) -> List[Document] :
 
-        final_date = search_date if search_date else (extracted_date)
-        print(f"search date: {final_date}")
-
-        try:
-            time_filter = self._build_filters(
-                search_date=final_date,
-                law_name=law_name_filter,
-                doc_type=doc_type_filter
-            )
-            if law_name_filter or doc_type_filter:
-                print(f"🎯 Sniper Filter Active: Law='{law_name_filter}', Type='{doc_type_filter}'")
-        except ValueError as e:
-            print(f"⚠️ Filter Error: {e}")
-            time_filter = None
-
-        all_docs = []
-        print(f"Searching: {search_queries} @ {final_date}")
-        for query in search_queries:
-            docs = self.vectorstore.similarity_search(
-                query, 
-                k=k, 
-                alpha=0.6,
-                filters=time_filter 
-            )
-            all_docs.extend(docs)
-        unique_docs_map = {doc.page_content: doc for doc in all_docs}
-        unique_candidates = list(unique_docs_map.values())
-        print(f"Found {len(unique_candidates)} candidates. Re-ranking...")
-        final_docs = unique_candidates[:k]
-        return final_docs
-        """
-        docs = self.similarity_search(
+        search_result = self.similarity_search(
             user_query, 
             self.embedder,
             5, 
         )
-        return docs
+        
+          
+        return search_result
         
         
         
