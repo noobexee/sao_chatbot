@@ -56,18 +56,21 @@ class InitialReviewService:
             print(f"Extracted {len(extracted_text)} chars. Sending to Typhoon Agents...")
             
             # 2. AI Agents
+            criteria2_task = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria2_sao_authority, extracted_text)
             criteria4_task = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria4_sufficiency, extracted_text)
             criteria6_task = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria6_complainant, extracted_text)
 
-            criteria4_ai_result, criteria6_ai_result = await asyncio.gather(criteria4_task, criteria6_task)
+            criteria2_ai_result, criteria4_ai_result, criteria6_ai_result = await asyncio.gather(criteria2_task, criteria4_task, criteria6_task)
 
             # 3. Format Response
+            criteria2_response = self._format_ai_response(criteria2_ai_result, "criteria2")
             criteria4_response = self._format_ai_response(criteria4_ai_result, "criteria4")
             criteria6_response = self._format_ai_response(criteria6_ai_result, "criteria6")
 
             return {
                 "status": "success",
                 "data": {
+                    "criteria2": criteria2_response,
                     "criteria4": criteria4_response,
                     "criteria6": criteria6_response,
                     "raw_text": extracted_text[:200]

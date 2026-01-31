@@ -28,12 +28,21 @@ const createField = (val: string | null): FieldData => ({
   isEdited: false
 });
 
+// สำหรับ Criteria 4 (Sufficiency)
 interface criteria4Details {
   entity: FieldData;
   behavior: FieldData;
   official: FieldData;
   date: FieldData;
   location: FieldData;
+}
+
+// ✅ Interface ใหม่สำหรับ Criteria 2 & 8 (Authority Check)
+interface AuthorityDetails {
+  result: string;    // "เป็น" หรือ "ไม่เป็น"
+  reason: string;    // คำอธิบาย
+  evidence?: string; // ข้อความจาก OCR (ถ้ามี)
+  organization?: string; // สำหรับ Criteria 8 (ชื่อองค์กร)
 }
 
 interface InitialReviewCriteria {
@@ -51,6 +60,7 @@ interface InitialReviewCriteria {
     reason?: string;
     people?: Person[];
     details?: criteria4Details; 
+    authority?: AuthorityDetails; // ✅ เพิ่ม Field นี้สำหรับ Criteria 2 & 8
   };
 }
 
@@ -68,7 +78,7 @@ const initialCriterias: InitialReviewCriteria[] = [
 export default function InitialReviewProjectPage() {
   const params = useParams(); 
   const searchParams = useSearchParams();
-  const { currentFile, setCurrentFile } = useInitialReview();
+  const { currentFile } = useInitialReview();
 
   const pathInitialReviewId = params?.InitialReviewId as string;
   const InitialReviewId = (pathInitialReviewId && pathInitialReviewId !== 'new-project') 
@@ -93,12 +103,24 @@ export default function InitialReviewProjectPage() {
   // --- State: OCR Status ---
   const [isOCRLoading, setIsOCRLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
+  const processedFileIdRef = React.useRef<string | null>(null);
 
-  // --- 1. OCR Logic (Run Automatically when file is loaded) ---
+  // --- 1. OCR Logic (Run Automatically) ---
   useEffect(() => {
     const runOCR = async () => {
+        // Validation
         if (!currentFile?.fileObj) return;
+        
+        // STOP if we already processed this specific file ID
+        // Assuming currentFile has a unique 'id' or we can use 'name' + 'size' as proxy
+        const fileId = currentFile.id || currentFile.name; 
+        if (processedFileIdRef.current === fileId) return;
+
+        // STOP if text already exists (redundant check but good safety)
         if (docText) return; 
+
+        // Mark as processing immediately
+        processedFileIdRef.current = fileId;
 
         setIsOCRLoading(true);
         setOcrError(null);
@@ -109,11 +131,12 @@ export default function InitialReviewProjectPage() {
             
             setDocText(result.text);
             setDraftText(result.text);
-            
-            setViewMode("text"); 
+            setViewMode("text");
         } catch (err: any) {
             console.error("OCR Error:", err);
             setOcrError(err.message || "Failed to extract text");
+            // Reset ref on error so user can retry? 
+            // processedFileIdRef.current = null;
         } finally {
             setIsOCRLoading(false);
         }
@@ -122,7 +145,7 @@ export default function InitialReviewProjectPage() {
     runOCR();
   }, [currentFile]);
 
-  // --- 2. Start Analysis Logic (Modified to use Edited Text) ---
+  // --- 2. Start Analysis Logic ---
   const handleStartAnalysis = async () => {
     if (!draftText.trim()) { 
         alert("No text to analyze. Please wait for OCR or type manually."); 
@@ -130,7 +153,10 @@ export default function InitialReviewProjectPage() {
     }
 
     setShowChecklist(true);
-    setCriterias(prev => prev.map(c => (c.id === 4 || c.id === 6) ? { ...c, isProcessing: true } : c));
+    // Set processing state for all auto criteria (2, 4, 6, 8)
+    setCriterias(prev => prev.map(c => 
+        ([2, 4, 6, 8].includes(c.id)) ? { ...c, isProcessing: true } : c
+    ));
 
     try {
         const blob = new Blob([draftText], { type: "text/plain" });
@@ -139,25 +165,71 @@ export default function InitialReviewProjectPage() {
         const result = await analyzeDocument(fileToAnalyze);
 
         if (result.status === "success" || result.data) {
-            const { criteria4, criteria6 } = result.data;
+            // Destructure all available results (including optional ones)
+            const { criteria2, criteria4, criteria6, criteria8 } = result.data;
 
             setCriterias(prev => prev.map(c => {
+                // ✅ Criteria 2: อำนาจหน้าที่ สตง.
+                if (c.id === 2 && criteria2) {
+                    return {
+                        ...c,
+                        isProcessing: false,
+                        status: criteria2.status,
+                        ocrResult: {
+                            status: criteria2.status,
+                            title: criteria2.title,
+                            reason: criteria2.reason,
+                            authority: {
+                                result: criteria2.result, // "เป็น" หรือ "ไม่เป็น"
+                                reason: criteria2.reason,
+                                evidence: criteria2.evidence
+                            }
+                        }
+                    };
+                }
+
+                // ✅ Criteria 4: Sufficiency
                 if (c.id === 4 && criteria4) {
                     const structuredDetails: criteria4Details = {
-                        entity: createField(criteria4.details?.entity || null),
-                        behavior: createField(criteria4.details?.behavior || null),
-                        official: createField(criteria4.details?.official || null),
-                        date: createField(criteria4.details?.date || null),
-                        location: createField(criteria4.details?.location || null)
+                        entity: createField(criteria4.details?.entity?.value || criteria4.details?.entity || null),
+                        behavior: createField(criteria4.details?.behavior?.value || criteria4.details?.behavior || null),
+                        official: createField(criteria4.details?.official?.value || criteria4.details?.official || null),
+                        date: createField(criteria4.details?.date?.value || criteria4.details?.date || null),
+                        location: createField(criteria4.details?.location?.value || criteria4.details?.location || null)
                     };
                     return { ...c, isProcessing: false, status: criteria4.status, ocrResult: { ...criteria4, details: structuredDetails } };
                 }
+
+                // ✅ Criteria 6: Complainant
                 if (c.id === 6 && criteria6) {
                     return { ...c, isProcessing: false, status: criteria6.status, ocrResult: { status: criteria6.status, title: criteria6.title, reason: criteria6.reason, people: criteria6.people } };
                 }
+
+                // ✅ Criteria 8: อำนาจองค์กรอิสระอื่น
+                if (c.id === 8 && criteria8) {
+                    return {
+                        ...c,
+                        isProcessing: false,
+                        status: criteria8.status,
+                        ocrResult: {
+                            status: criteria8.status,
+                            title: criteria8.title,
+                            reason: criteria8.reason,
+                            authority: {
+                                result: criteria8.result,
+                                reason: criteria8.reason,
+                                evidence: criteria8.evidence,
+                                organization: criteria8.organization
+                            }
+                        }
+                    };
+                }
+
                 return c;
             }));
-            setExpandedCriteriaIds(prev => [...new Set([...prev, 4, 6])]);
+            
+            // Expand relevant sections
+            setExpandedCriteriaIds(prev => [...new Set([...prev, 2, 4, 6, 8])]);
         } else {
             throw new Error(result.message || "Unknown error");
         }
@@ -168,7 +240,7 @@ export default function InitialReviewProjectPage() {
     }
   };
 
-  // --- 3. Save Logic (Checklist) ---
+  // --- 3. Save Logic ---
   const handleSaveToDatabase = async () => {
     if (!InitialReviewId) {
       alert("Error: InitialReview ID missing.");
@@ -198,8 +270,7 @@ export default function InitialReviewProjectPage() {
     }
   };
 
-
-  // --- UI Helpers ---
+  // --- Helpers & UI ---
   const toggleExpand = (id: number) => {
     setExpandedCriteriaIds(prev => prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]);
   };
@@ -226,27 +297,63 @@ export default function InitialReviewProjectPage() {
     }
   };
 
+  // --- Editable Logic for Step 4 (Simplified for brevity) ---
   const startEditingDetail = (key: keyof criteria4Details, field: FieldData) => { setEditingField(key); setTempEditValue(field.value || ""); };
   const cancelEditDetail = () => { setEditingField(null); setTempEditValue(""); };
   const saveDetailEdit = (key: keyof criteria4Details) => { 
     setCriterias(prev => prev.map(criteria => { 
         if (criteria.id === 4 && criteria.ocrResult && criteria.ocrResult.details) { 
-            return { 
-                ...criteria, 
-                ocrResult: { 
-                    ...criteria.ocrResult, 
-                    details: { 
-                        ...criteria.ocrResult.details, 
-                        [key]: { ...criteria.ocrResult.details[key], value: tempEditValue, isEdited: true } 
-                    } 
-                } 
-            }; 
+            return { ...criteria, ocrResult: { ...criteria.ocrResult, details: { ...criteria.ocrResult.details, [key]: { ...criteria.ocrResult.details[key], value: tempEditValue, isEdited: true } } } }; 
         } 
         return criteria; 
     })); 
     setEditingField(null); 
   };
 
+  // --- Render Functions ---
+
+  // ✅ 1. Render Authority Check (สำหรับ Criteria 2 & 8)
+  const renderAuthorityResult = (criteriaId: number, status: criteriaStatus, authority?: AuthorityDetails) => {
+    if (!authority) return null;
+
+    // ใช้ status จาก API โดยตรงเพื่อความถูกต้อง (Success = สีเขียว, Fail = สีแดง)
+    const isSuccess = status === 'success';
+    
+    // ใช้ existing getStatusClasses เพื่อความคุมโทนสี
+    const statusClass = getStatusClasses(status);
+
+    return (
+        <div className="space-y-3 mt-1">
+            {/* บรรทัดที่ 1: ผลลัพธ์ (เป็น/ไม่เป็น) พร้อมเครื่องหมาย */}
+            <div className={`p-3 rounded border flex items-center gap-3 ${statusClass}`}>
+                <div className={`w-20 h-6 rounded-full flex items-center justify-center shrink-0 ${isSuccess ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'}`}>
+                    {isSuccess ? "✓ Pass" : "✕ Fail"}
+                </div>
+                <div className="font-bold text-lg">
+                    {authority.result}
+                    {criteriaId === 8 && authority.organization && authority.result === "เป็น" && (
+                        <span className="ml-2 text-sm font-normal text-gray-600">({authority.organization})</span>
+                    )}
+                </div>
+            </div>
+
+            {/* บรรทัดที่ 2: คำอธิบายเหตุผล */}
+            <div className="bg-gray-50 p-3 rounded border border-gray-200 text-sm text-gray-700 leading-relaxed">
+                <span className="font-bold text-gray-900 block mb-1">เหตุผล:</span>
+                {authority.reason}
+            </div>
+
+            {/* บรรทัดที่ 3: อ้างอิงจาก OCR (ถ้ามี) */}
+            {authority.evidence && (
+                <div className="text-xs text-gray-500 italic pl-3 border-l-4 border-gray-300">
+                    "{authority.evidence}"
+                </div>
+            )}
+        </div>
+    );
+  };
+
+  // 2. Render Step 4 Items (Editable)
   const renderCriteria4Item = (fieldKey: keyof criteria4Details, label: string, field: FieldData | undefined, required: boolean) => {
     if (!field) return null;
     const isEditing = editingField === fieldKey;
@@ -262,18 +369,14 @@ export default function InitialReviewProjectPage() {
                 
                 {isEditing ? (
                     <div className="flex gap-2 mt-1">
-                        <input type="text" className="border border-blue-300 rounded px-2 py-1 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-100" value={tempEditValue} onChange={(e) => setTempEditValue(e.target.value)} autoFocus />
-                        <button onClick={() => saveDetailEdit(fieldKey)} className="text-green-600 hover:text-green-800 font-bold px-1">✓</button>
-                        <button onClick={cancelEditDetail} className="text-red-500 hover:text-red-700 font-bold px-1">✕</button>
+                        <input type="text" className="border border-blue-300 rounded px-2 py-1 text-sm w-full" value={tempEditValue} onChange={(e) => setTempEditValue(e.target.value)} autoFocus />
+                        <button onClick={() => saveDetailEdit(fieldKey)} className="text-green-600">✓</button>
+                        <button onClick={cancelEditDetail} className="text-red-500">✕</button>
                     </div>
                 ) : (
                     <div className="flex items-center gap-2 group-hover/item:bg-gray-50 rounded px-1 -ml-1 transition-colors">
-                        {displayValue ? (
-                            <span className={`font-bold ${field.isEdited ? 'text-gray-900' : 'text-gray-800'}`}>{displayValue}</span>
-                        ) : (
-                            <span className="text-gray-400 italic">ไม่พบข้อมูล</span>
-                        )}
-                        <button onClick={() => startEditingDetail(fieldKey, field)} className="opacity-0 group-hover/item:opacity-100 text-blue-400 hover:text-blue-600 transition-opacity p-1" title="Edit">✎</button>
+                        {displayValue ? <span className={`font-bold ${field.isEdited ? 'text-gray-900' : 'text-gray-800'}`}>{displayValue}</span> : <span className="text-gray-400 italic">ไม่พบข้อมูล</span>}
+                        <button onClick={() => startEditingDetail(fieldKey, field)} className="opacity-0 group-hover/item:opacity-100 text-blue-400">✎</button>
                     </div>
                 )}
             </div>
@@ -288,129 +391,48 @@ export default function InitialReviewProjectPage() {
 
   return (
     <div className="flex h-full w-full flex-row overflow-hidden bg-[#f9fafb]">
-      {/* LEFT PANEL */}
+      {/* LEFT PANEL: View/Edit Doc (Same as before) */}
       <div className="flex-1 overflow-y-auto p-4 md:p-8 flex justify-center bg-[#f0f2f5]">
         <div className="flex flex-col h-full w-full max-w-[800px] min-h-[1000px] bg-white shadow-sm border border-gray-200 relative">
-          
-          {/* Header Control Bar (PDF/Text Switcher) */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white z-10 sticky top-0">
             <div className="flex rounded-full border border-gray-200 overflow-hidden shadow-sm">
-                <button
-                    onClick={() => setViewMode("pdf")}
-                    className={`px-4 py-1.5 text-sm font-medium transition-colors ${
-                        viewMode === "pdf" ? "bg-gray-800 text-white" : "text-gray-600 hover:bg-gray-50"
-                    }`}
-                >
-                    PDF Original
-                </button>
-                <button
-                    onClick={() => setViewMode("text")}
-                    className={`px-4 py-1.5 text-sm font-medium transition-colors ${
-                        viewMode === "text" ? "bg-gray-800 text-white" : "text-gray-600 hover:bg-gray-50"
-                    }`}
-                >
-                    Converted Text
-                </button>
+                <button onClick={() => setViewMode("pdf")} className={`px-4 py-1.5 text-sm font-medium ${viewMode === "pdf" ? "bg-gray-800 text-white" : "text-gray-600 hover:bg-gray-50"}`}>PDF Original</button>
+                <button onClick={() => setViewMode("text")} className={`px-4 py-1.5 text-sm font-medium ${viewMode === "text" ? "bg-gray-800 text-white" : "text-gray-600 hover:bg-gray-50"}`}>Converted Text</button>
             </div>
-
-            {/* Editor Controls */}
             {viewMode === "text" && (
                 <div className="flex gap-2">
                     {isEditingText ? (
                         <>
-                            <button
-                                onClick={() => { setDraftText(docText || ""); setIsEditingText(false); }}
-                                className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-200"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={() => { setDocText(draftText); setIsEditingText(false); }}
-                                className="px-3 py-1.5 text-sm text-white bg-green-600 hover:bg-green-700 rounded shadow-sm flex items-center gap-1"
-                            >
-                                Done Editing
-                            </button>
+                            <button onClick={() => { setDraftText(docText || ""); setIsEditingText(false); }} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded">Cancel</button>
+                            <button onClick={() => { setDocText(draftText); setIsEditingText(false); }} className="px-3 py-1.5 text-sm text-white bg-green-600 rounded">Done Editing</button>
                         </>
                     ) : (
-                        <button
-                            onClick={() => { setIsEditingText(true); setDraftText(docText || ""); }}
-                            className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded border border-gray-200 flex items-center gap-1 shadow-sm"
-                            disabled={isOCRLoading}
-                        >
-                            <span>✎</span> Edit Text
-                        </button>
+                        <button onClick={() => { setIsEditingText(true); setDraftText(docText || ""); }} className="px-3 py-1.5 text-sm text-gray-700 border border-gray-200 rounded" disabled={isOCRLoading}>✎ Edit Text</button>
                     )}
                 </div>
             )}
           </div>
 
           <div className="flex-1 relative bg-gray-50">
-            {/* VIEW MODE: PDF */}
             {viewMode === "pdf" && (
                  <div className="w-full h-full flex flex-col">
-                    {isLoadingFile ? (
-                        <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-3">
-                            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#a83b3b]"></div>
-                            <p className="font-medium text-gray-600">Retrieving Document...</p>
-                        </div>
-                    ) : currentFile ? (
-                        currentFile.type === 'pdf' ? (
-                        <iframe src={currentFile.previewUrl} className="w-full h-full border-none" title="Doc" />
-                        ) : (
-                        <div className="w-full h-full overflow-auto flex items-center justify-center p-4">
-                            <img src={currentFile.previewUrl} alt="Doc" className="max-w-full max-h-full object-contain shadow-md" />
-                        </div>
-                        )
-                    ) : (
-                        <div className="flex flex-col items-center justify-center h-full text-gray-400 p-10 gap-4">
-                            <div className="text-4xl">📄</div>
-                            <h2 className="text-xl font-bold">No Document Found</h2>
-                            <p className="text-sm">Please upload a document to start analysis</p>
-                        </div>
-                    )}
+                    {currentFile ? (
+                        currentFile.type === 'pdf' ? <iframe src={currentFile.previewUrl} className="w-full h-full border-none" /> : <div className="p-4 flex justify-center"><img src={currentFile.previewUrl} className="max-w-full" /></div>
+                    ) : <div className="flex flex-col items-center justify-center h-full text-gray-400"><h2 className="text-xl font-bold">No Document</h2></div>}
                 </div>
             )}
-
-            {/* VIEW MODE: TEXT */}
             {viewMode === "text" && (
                 <div className="w-full h-full bg-white overflow-y-auto p-6 md:p-8 relative">
-                    {/* Loading Overlay for OCR */}
-                    {isOCRLoading && (
-                         <div className="absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center">
-                            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-2"></div>
-                            <p className="text-blue-600 font-semibold animate-pulse">Extracting Text...</p>
-                        </div>
-                    )}
-                    
-                    {ocrError ? (
-                        <div className="flex flex-col items-center justify-center h-full text-red-500 p-8 text-center">
-                            <p className="font-bold mb-2">Text Extraction Failed</p>
-                            <p className="text-sm">{ocrError}</p>
-                            <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-gray-100 rounded text-sm hover:bg-gray-200">Retry</button>
-                        </div>
-                    ) : (
-                        isEditingText ? (
-                            <textarea 
-                               value={draftText}
-                               onChange={(e) => setDraftText(e.target.value)}
-                               className="w-full h-full min-h-[500px] border border-gray-200 rounded-lg p-6 font-mono text-sm leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300"
-                               placeholder="Document text will appear here..."
-                            />
-                        ) : (
-                            <pre className="whitespace-pre-wrap text-sm leading-relaxed font-mono text-gray-800 bg-white min-h-[500px]">
-                               {docText || <span className="text-gray-400 italic">No text content available. Waiting for OCR...</span>}
-                            </pre>
-                        )
-                    )}
+                    {isOCRLoading && <div className="absolute inset-0 bg-white/80 z-20 flex items-center justify-center"><p className="text-blue-600 animate-pulse">Extracting Text...</p></div>}
+                    {isEditingText ? <textarea value={draftText} onChange={(e) => setDraftText(e.target.value)} className="w-full h-full min-h-[500px] border border-gray-200 rounded p-6 font-mono text-sm resize-none" /> : <pre className="whitespace-pre-wrap text-sm font-mono text-gray-800">{docText || "No text content."}</pre>}
                 </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* RIGHT PANEL (Analysis Checklist) */}
+      {/* RIGHT PANEL: Checklist */}
       <div className="w-[500px] shrink-0 flex flex-col gap-6 border-l border-gray-200 bg-white p-6 overflow-y-auto">
-        
         {!showChecklist ? (
             <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-bold text-[#1e293b] mb-2">เริ่มต้นการตรวจสอบด้วย AI</h2>
@@ -418,34 +440,24 @@ export default function InitialReviewProjectPage() {
                 ระบบจะวิเคราะห์ข้อมูลจากข้อความที่แสดง <br/>
                 กรุณาตรวจสอบความถูกต้องของข้อความก่อนเริ่มวิเคราะห์
               </p>
-              <button 
-                onClick={handleStartAnalysis} 
-                disabled={isOCRLoading || !currentFile || !docText} 
-                className={`w-full px-6 py-2 rounded-lg border transition-all text-sm font-medium shadow-sm 
-                    ${(isOCRLoading || !currentFile || !docText) 
-                        ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' 
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
-                    }`}
-              >
-                {isOCRLoading ? "Loading Text..." : "Start Analysis"}
-              </button>
+              <button onClick={handleStartAnalysis} disabled={isOCRLoading || !currentFile || !docText} className="w-full px-6 py-2 rounded-lg border bg-white text-gray-700 hover:bg-gray-50 transition-all text-sm font-medium shadow-sm">{isOCRLoading ? "Loading Text..." : "Start Analysis"}</button>
             </div>
         ) : (
             <div className="flex h-full flex-col bg-white">
                 <div className="space-y-3 pb-4">
                     {criterias.map((criteria) => (
                     <div key={criteria.id}>
-                        <div 
-                            className={`flex items-center justify-between rounded-md border p-4 shadow-sm cursor-pointer transition-all duration-300 ${getStatusClasses(criteria.status)}`} 
-                            onClick={() => toggleExpand(criteria.id)}
-                        >
+                        <div className={`flex items-center justify-between rounded-md border p-4 shadow-sm cursor-pointer transition-all duration-300 ${getStatusClasses(criteria.status)}`} onClick={() => toggleExpand(criteria.id)}>
                           <div className="flex-1 pr-4">
                              <div className="flex items-center gap-2"><span className="text-sm font-medium">{criteria.label}</span></div>
                              {criteria.isProcessing && <span className="inline-flex items-center gap-1 mt-1 text-xs text-blue-600 font-semibold animate-pulse">Processing...</span>}
                              {!expandedCriteriaIds.includes(criteria.id) && !criteria.isProcessing && criteria.status !== 'neutral' && (
                                 <div className={`mt-1 text-xs font-bold ${criteria.status === 'success' ? 'text-green-700' : 'text-red-700'}`}>
-                                    {criteria.type === 'manual' && criteria.selectedOption && <span>Selected: {criteria.selectedOption}</span>}
+                                    {/* Show summary result when collapsed */}
+                                    {criteria.id === 2 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
                                     {criteria.id === 4 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
+                                    {criteria.id === 6 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
+                                    {criteria.id === 8 && criteria.ocrResult?.authority && <span>Result: {criteria.ocrResult.authority.result}</span>}
                                 </div>
                              )}
                           </div>
@@ -454,49 +466,55 @@ export default function InitialReviewProjectPage() {
 
                         {expandedCriteriaIds.includes(criteria.id) && (
                            <div className="mt-2 ml-4 p-4 border-l-2 border-gray-200 bg-gray-50 rounded-r-md">
+                              
+                              {/* ✅ Criteria 2 & 8: Authority Check UI */}
+                              {(criteria.id === 2 || criteria.id === 8) && criteria.ocrResult?.authority && (
+                                  renderAuthorityResult(criteria.id, criteria.status, criteria.ocrResult.authority)
+                              )}
+
+                              {/* Manual Step UI */}
                               {criteria.type === "manual" && criteria.options && (
                                  <div className="space-y-2">
                                     <p className="text-xs font-bold text-gray-500 mb-2 uppercase">Manual Verification</p>
                                     {criteria.options.map((option) => (
                                       <label key={option.label} className="flex items-center gap-3 cursor-pointer group p-2 rounded hover:bg-white hover:shadow-sm">
-                                        <input type="radio" name={`criteria-${criteria.id}`} className="h-4 w-4 text-[#a83b3b] focus:ring-[#a83b3b]" checked={criteria.selectedOption === option.label} onChange={() => handleOptionSelect(criteria.id, option.label, option.value)} />
-                                        <span className={`text-sm ${criteria.selectedOption === option.label ? 'font-bold text-gray-900' : 'text-gray-600'}`}>{option.label}</span>
+                                        <input type="radio" name={`criteria-${criteria.id}`} className="h-4 w-4 text-[#a83b3b]" checked={criteria.selectedOption === option.label} onChange={() => handleOptionSelect(criteria.id, option.label, option.value)} />
+                                        <span className="text-sm">{option.label}</span>
                                       </label>
                                     ))}
                                  </div>
                               )}
 
-                              {criteria.id === 4 && criteria.ocrResult && criteria.ocrResult.details && (
+                              {/* Step 4: Editable Form */}
+                              {criteria.id === 4 && criteria.ocrResult?.details && (
                                 <div className="space-y-2 bg-white p-2 rounded border border-gray-100">
-                                    <div className="flex justify-between items-center mb-2"><p className="text-xs font-bold text-gray-500 uppercase">ตรวจสอบองค์ประกอบ (Required*)</p></div>
                                     {renderCriteria4Item("official", "เจ้าหน้าที่ผู้ถูกร้อง", criteria.ocrResult.details.official, true)}
                                     {renderCriteria4Item("entity", "ชื่อหน่วยรับตรวจ", criteria.ocrResult.details.entity, true)}
                                     {renderCriteria4Item("behavior", "พฤติการณ์", criteria.ocrResult.details.behavior, true)}
-                                    <p className="text-xs font-bold text-gray-500 uppercase mt-4 mb-2">ข้อมูลเพิ่มเติม (Optional)</p>
                                     {renderCriteria4Item("date", "วันเวลา", criteria.ocrResult.details.date, false)}
                                     {renderCriteria4Item("location", "สถานที่", criteria.ocrResult.details.location, false)}
                                 </div>
                               )}
 
-                              {criteria.id === 6 && criteria.ocrResult && (
+                              {/* Step 6: People List */}
+                              {criteria.id === 6 && criteria.ocrResult?.people && (
                                 <div className="space-y-3">
-                                    {criteria.ocrResult.people && criteria.ocrResult.people.length > 0 ? (
-                                        <div className="bg-white border border-gray-200 rounded-md overflow-hidden">
-                                            <div className="bg-gray-100 px-3 py-2 text-xs font-bold text-gray-500 uppercase flex justify-between"><span>Detected People</span><span className="bg-gray-200 text-gray-600 px-1.5 rounded-full">{criteria.ocrResult.people.length}</span></div>
-                                            <div className="divide-y divide-gray-100 max-h-60 overflow-y-auto">
-                                                {criteria.ocrResult.people.map((person, idx) => (
-                                                    <div key={idx} className="px-3 py-2 text-sm flex items-center justify-between hover:bg-gray-50">
-                                                        <span className="font-medium text-gray-800 truncate max-w-[180px]">{person.name}</span>
-                                                        <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${person.role === 'ผู้ร้องเรียน' ? 'bg-blue-100 text-blue-700' : person.role === 'ผู้ถูกร้องเรียน' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>{person.role}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
+                                    <div className="bg-white border border-gray-200 rounded-md overflow-hidden">
+                                        <div className="bg-gray-100 px-3 py-2 text-xs font-bold text-gray-500 uppercase flex justify-between"><span>Detected People</span><span className="bg-gray-200 text-gray-600 px-1.5 rounded-full">{criteria.ocrResult.people.length}</span></div>
+                                        <div className="divide-y divide-gray-100 max-h-60 overflow-y-auto">
+                                            {criteria.ocrResult.people.map((person, idx) => (
+                                                <div key={idx} className="px-3 py-2 text-sm flex items-center justify-between hover:bg-gray-50">
+                                                    <span className="font-medium truncate">{person.name}</span>
+                                                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100">{person.role}</span>
+                                                </div>
+                                            ))}
                                         </div>
-                                    ) : ( <div className="text-sm text-gray-500 italic p-2 text-center">ไม่พบรายชื่อบุคคลในเอกสาร</div> )}
+                                    </div>
                                 </div>
                               )}
 
-                              {(criteria.id === 4 || criteria.id === 6) && criteria.ocrResult && (
+                              {/* Feedback */}
+                              {criteria.ocrResult && (
                                 <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
                                     <span className="text-xs text-gray-400">Is this result correct?</span>
                                     <button onClick={(e) => { e.stopPropagation(); handleFeedback(criteria.id, "up"); }} className={`p-1.5 rounded transition-colors ${criteria.feedback === "up" ? "bg-green-50 text-green-600 ring-1 ring-green-200" : "text-gray-400 hover:text-green-600 hover:bg-gray-50"}`} title="Correct">
@@ -512,20 +530,12 @@ export default function InitialReviewProjectPage() {
                     </div>
                     ))}
                 </div>
-
+                {/* Save Button Area (Same as before) */}
                 <div className="pt-4 mt-auto border-t border-gray-100 flex flex-col gap-3">
-                    <button onClick={handleToggleAll} className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 w-full font-medium transition-colors">{expandedCriteriaIds.length === criterias.length ? 'ย่อทั้งหมด' : 'ขยายทั้งหมด'}</button>
-                    <button 
-                        onClick={handleSaveToDatabase} 
-                        disabled={isSaving || !currentFile} 
-                        className={`w-full px-6 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all text-sm font-medium shadow-sm flex items-center justify-center gap-2 ${(isSaving || !currentFile) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                        {isSaving ? "Saving..." : "Save Results"}
-                    </button>
+                    <button onClick={handleSaveToDatabase} disabled={isSaving} className="w-full px-6 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all text-sm font-medium shadow-sm">{isSaving ? "Saving..." : "Save Results"}</button>
                 </div>
             </div>
         )}
-
       </div>
     </div>
   );

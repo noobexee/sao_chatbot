@@ -4,8 +4,10 @@ import { getBaseUrl } from "../config";
 export interface AnalyzeResponse {
     status: string;
     data: {
-        criteria4: any; // Define detailed interface if needed
+        criteria2: any; 
+        criteria4: any; 
         criteria6: any;
+        criteria8: any;
         raw_text?: string;
     };
     message?: string;
