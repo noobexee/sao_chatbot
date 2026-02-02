@@ -31,14 +31,14 @@ def run_migrations():
         files = sorted([f for f in os.listdir(migrations_dir) if f.endswith('.sql')])
         
         if not files:
-            print("⚠️  No SQL files found in migrations directory.")
+            print("No SQL files found in migrations directory.")
             return
 
         print(f"Found {len(files)} migration files.")
 
         for filename in files:
             file_path = os.path.join(migrations_dir, filename)
-            print(f"🚀 Running {filename}...")
+            print(f"Running {filename}...")
             
             with open(file_path, 'r', encoding='utf-8') as f:
                 sql_commands = f.read()
@@ -51,7 +51,7 @@ def run_migrations():
                     print(f"ERROR: {e}")
                     return 
 
-        print("\n✨ All migrations executed successfully!")
+        print("\nAll migrations executed successfully!")
 
     except psycopg2.OperationalError as e:
         print(f"Connection Error: Could not connect to database.")
@@ -62,7 +62,7 @@ def run_migrations():
         if conn:
             cur.close()
             conn.close()
-            print("🔌 Connection closed.")
+            print("Connection closed.")
 
 if __name__ == "__main__":
     run_migrations()
