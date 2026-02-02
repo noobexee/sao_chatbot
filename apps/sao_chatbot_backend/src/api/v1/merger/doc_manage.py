@@ -1,13 +1,15 @@
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks, Form
 from pathlib import Path
-import shutil
 from typing import Optional, List
 from datetime import datetime, date
 import json
-from src.app.service.ocr_service import run_ocr_job
+from src.app.service.ocr_service import run_ocr_and_update_db
 from src.app.manager.document import DocumentMeta
 from src.db.repositories.document_repository import DocumentRepository
+from fastapi.responses import StreamingResponse
+from io import BytesIO
+from urllib.parse import quote
 
 router = APIRouter()
 MOCK_DIR = Path("mock")
@@ -88,16 +90,26 @@ def get_original_pdf(doc_id: str):
     try:
         file_name, pdf_bytes = repo.get_original_pdf(doc_id)
     except ValueError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(status_code=404, detail=str(e))
+    if isinstance(file_name, bytes):
+        file_name = file_name.decode("utf-8", errors="ignore")
 
-    return Response(
-        content=pdf_bytes,
+    if not file_name:
+        file_name = "document.pdf"
+
+    ascii_fallback = "document.pdf"
+    utf8_filename = quote(file_name)
+
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'inline; filename="{file_name}"'
+            "Content-Disposition": (
+                f"inline; filename=\"{ascii_fallback}\"; "
+                f"filename*=UTF-8''{utf8_filename}"
+            )
         },
     )
-
 
 @router.post("/doc")
 def upload_new_pdf(
@@ -115,8 +127,9 @@ def upload_new_pdf(
         raise HTTPException(400, "main_file must be a PDF")
 
     repo = DocumentRepository()
+    main_pdf_bytes = main_file.file.read()
 
-    result = repo.save_pdf(
+    result = repo.save_document(
         doc_type=doc_type,
         title=title,
         announce_date=announce_date,
@@ -124,15 +137,20 @@ def upload_new_pdf(
         is_first_version=is_first_version,
         previous_doc_id=previous_doc_id,
         main_file_name=main_file.filename,
-        main_file_bytes=main_file.file.read(),
+        main_file_bytes=main_pdf_bytes,
         related_files=[
             (rf.filename, rf.file.read()) for rf in related_files
         ] if related_files else None,
     )
 
-    background_tasks.add_task(run_ocr_job, result["id"])
+    background_tasks.add_task(
+        run_ocr_and_update_db,
+        doc_id=result["id"],
+        pdf_bytes=main_pdf_bytes,
+    )
 
     return result
+
 
 @router.get("/doc/{doc_id}/status")
 def get_status(doc_id: str):

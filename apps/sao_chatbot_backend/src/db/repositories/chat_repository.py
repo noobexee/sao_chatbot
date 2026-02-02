@@ -9,6 +9,7 @@ class ChatRepository:
             conn = get_db_connection()
             conn.autocommit = True
             cur = conn.cursor()
+            print(context)
             
             query = """
                 INSERT INTO conversations 
