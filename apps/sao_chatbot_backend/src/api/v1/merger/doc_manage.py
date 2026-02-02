@@ -1,9 +1,7 @@
 from fastapi.responses import Response
 from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks, Form
-from pathlib import Path
 from typing import Optional, List
 from datetime import datetime, date
-import json
 from src.app.service.ocr_service import run_ocr_and_update_db
 from src.app.manager.document import DocumentMeta
 from src.db.repositories.document_repository import DocumentRepository
@@ -12,7 +10,6 @@ from io import BytesIO
 from urllib.parse import quote
 
 router = APIRouter()
-MOCK_DIR = Path("mock")
 
 def parse_date(value: Optional[str]) -> Optional[date]:
     if not value:
@@ -24,59 +21,6 @@ def parse_date(value: Optional[str]) -> Optional[date]:
             return datetime.strptime(value, "%d-%m-%Y").date()
         except ValueError:
             raise HTTPException(400, f"Invalid date format: {value}")
-
-def derive_title(file: UploadFile, title: Optional[str]) -> str:
-    if title and title.strip():
-        return title.strip()
-    return Path(file.filename).stem
-
-def find_doc_dir_by_id(doc_id: str) -> Optional[Path]:
-    if not MOCK_DIR.exists():
-        return None
-    for type_dir in MOCK_DIR.iterdir():
-        candidate = type_dir / doc_id
-        if candidate.is_dir():
-            return candidate
-    return None
-
-def load_meta(meta_path: Path) -> DocumentMeta:
-    return DocumentMeta.parse_obj(
-        json.loads(meta_path.read_text(encoding="utf-8"))
-    )
-
-def get_next_version(doc_type: str, title: str) -> int:
-    type_dir = MOCK_DIR / doc_type
-    if not type_dir.exists():
-        return 1
-    max_version = 0
-    for doc_dir in type_dir.iterdir():
-        meta_path = doc_dir / "meta.json"
-        if not meta_path.exists():
-            continue
-        meta = load_meta(meta_path)
-        if meta.title == title and meta.version:
-            max_version = max(max_version, meta.version)
-
-    return max_version + 1 if max_version else 1
-
-
-def mark_previous_not_latest(doc_type: str, title: str):
-    type_dir = MOCK_DIR / doc_type
-    if not type_dir.exists():
-        return
-
-    for doc_dir in type_dir.iterdir():
-        meta_path = doc_dir / "meta.json"
-        if not meta_path.exists():
-            continue
-
-        meta = load_meta(meta_path)
-        if meta.title == title and meta.is_latest:
-            meta.is_latest = False
-            meta_path.write_text(
-                meta.model_dump_json(ensure_ascii=False, indent=2),
-                encoding="utf-8"
-            )
 
 @router.get("/doc")
 def list_documents():
