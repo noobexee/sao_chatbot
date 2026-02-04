@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+max_chunk_size = 1100
+chunk_overlap = 200
 def extract_header_and_footer(text: str) -> Tuple[str, List[str], List[str]]:
     """
     Extracts the Law Name (first line) and References (attachments at bottom).
@@ -63,8 +65,8 @@ def chunk_by_size(
     full_body_text = "\n".join(lines).strip()
     splitter = RecursiveCharacterTextSplitter(
         separators=["\n\n", "\n", " ", ""],
-        chunk_size=2000,
-        chunk_overlap=200
+        chunk_size=max_chunk_size,
+        chunk_overlap=chunk_overlap
     )
     
     text_chunks = splitter.split_text(full_body_text)
@@ -107,8 +109,8 @@ def chunk_by_clause(
 
     splitter = RecursiveCharacterTextSplitter(
         separators=["\n\n", "\n", " ", ""],
-        chunk_size=2000,
-        chunk_overlap=200
+        chunk_size=max_chunk_size,
+        chunk_overlap=chunk_overlap
     )
     
     json_results = []
@@ -121,7 +123,7 @@ def chunk_by_clause(
         if not full_text: return
 
         # If the specific Clause is over 2000 chars, split it up
-        if len(full_text) > 2000:
+        if len(full_text) > max_chunk_size:
             sub_chunks = splitter.split_text(full_text)
             for i, sub_text in enumerate(sub_chunks):
                 json_results.append(create_dict(f"{cid}_p{i+1}", sub_text, chap, part, is_sub=True))

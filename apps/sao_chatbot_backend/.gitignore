@@ -28,4 +28,4 @@ data/
 
 test.ipynb
 metadata/
-test/
+test/*
