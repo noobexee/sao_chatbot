@@ -92,6 +92,25 @@ class VectorStoreTransaction:
                 del self.metadata[i]
             print(f"Deleted {len(ids_to_remove)} vectors matching {key}={value}")
 
+    def update_metadata_field(self, filter_key: str, filter_value: Any, update_key: str, new_value: Any):
+        """
+        Updates a specific field in the metadata for all entries matching the filter.
+        No change to the FAISS index is required.
+        """
+        if not self.metadata:
+            return
+
+        updated_count = 0
+        for entry in self.metadata:
+            if entry.get(filter_key) == filter_value:
+                entry[update_key] = new_value
+                updated_count += 1
+        
+        if updated_count > 0:
+            print(f"Atomic Metadata Update: Set {update_key}={new_value} for {updated_count} chunks.")
+        else:
+            print(f"No metadata found matching {filter_key}={filter_value}")
+
 # Keep this for your Retriever which only reads
 def load_faiss_index(load_path: str):
     with _global_lock:

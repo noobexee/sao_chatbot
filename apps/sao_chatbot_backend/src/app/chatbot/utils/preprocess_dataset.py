@@ -1,6 +1,7 @@
 import os
 import json
 from pathlib import Path
+from typing import Any
 import numpy as np
 from src.app.chatbot.utils.embedding import BGEEmbedder
 from src.db.vector_store import VectorStoreTransaction
@@ -79,3 +80,26 @@ def update_document_pipeline(document_id: str, new_chunks: list, embedder: BGEEm
         print(f"Successfully updated Document ID: {document_id}")
     except Exception as e:
         print(f"Error during update of {document_id}: {e}")
+
+def update_document_expiry_pipeline(document_id: str, new_expiry: str = "2999-01-01"):
+    """
+    Finds all chunks with document_id and updates their expire_date.
+    This is an atomic 'metadata-only' update.
+    """
+    print(f"Updating expiry date for Document ID: {document_id} to {new_expiry}")
+    
+    try:
+        # Open the transaction (Locks and Loads automatically)
+        with VectorStoreTransaction(VECTOR_STORE_DIR) as vs:
+            vs.update_metadata_field(
+                filter_key="document_id", 
+                filter_value=document_id, 
+                update_key="expire_date", 
+                new_value=new_expiry
+            )
+        # Block ends: Metadata is saved to disk and lock is released
+        print(f"Expiry update complete for {document_id}")
+        
+    except Exception as e:
+        print(f"Error updating expiry for {document_id}: {e}")
+    
