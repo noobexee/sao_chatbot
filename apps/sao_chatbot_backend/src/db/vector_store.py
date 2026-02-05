@@ -1,138 +1,101 @@
-"""
-FAISS vector store utilities.
-
-This module provides functions for creating, saving, and loading
-FAISS indices with associated metadata.
-"""
-
 import json
 import os
-from typing import List, Tuple
-
+import threading
 import faiss
 import numpy as np
+from typing import List, Tuple, Any
 
+# Global lock to prevent simultaneous writes from different threads
+_global_lock = threading.Lock()
+LOCK_TIMEOUT = 20.0  # Seconds to wait before timing out
 
-def create_faiss_index(dimension: int) -> faiss.IndexFlatL2:
+class VectorStoreTransaction:
     """
-    Initialize FAISS index with specified dimension.
-
-    Args:
-        dimension: Embedding dimension (1024 for BGE-M3)
-
-    Returns:
-        FAISS IndexFlatL2 for exact L2 distance search
-
-    Note:
-        IndexFlatL2 performs exact search using L2 (Euclidean) distance.
-        For larger datasets, consider using IndexIVFFlat for faster approximate search.
+    A transactional wrapper for FAISS. 
+    Usage:
+        with VectorStoreTransaction("storage/path") as vs:
+            vs.delete_by_filter("source", "old_file.json")
+            vs.add(new_embeddings, new_metadata)
     """
-    index = faiss.IndexFlatL2(dimension)
-    return index
+    def __init__(self, path: str):
+        self.path = path
+        self.index = None
+        self.metadata = []
 
+    def __enter__(self):
+        #  Block other threads
+        acquired = _global_lock.acquire(timeout=LOCK_TIMEOUT)
+        if not acquired:
+            raise TimeoutError("Could not acquire lock. The index might be in use.")
+        
+        try:
+            #  Load the current state from disk
+            index_path = os.path.join(self.path, "index.faiss")
+            metadata_path = os.path.join(self.path, "metadata.json")
+            
+            if os.path.exists(index_path) and os.path.exists(metadata_path):
+                self.index = faiss.read_index(index_path)
+                with open(metadata_path, 'r', encoding='utf-8') as f:
+                    self.metadata = json.load(f)
+            return self
+        except Exception as e:
+            _global_lock.release()
+            raise e
 
-def save_faiss_index(
-    index: faiss.Index,
-    metadata: List[dict],
-    save_path: str
-):
-    """
-    Persist FAISS index and metadata to disk.
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            # If NO ERROR occurred inside the 'with' block, save changes
+            if exc_type is None and self.index is not None:
+                os.makedirs(self.path, exist_ok=True)
+                
+                # Save FAISS binary
+                faiss.write_index(self.index, os.path.join(self.path, "index.faiss"))
+                
+                # Atomic Save Metadata
+                meta_path = os.path.join(self.path, "metadata.json")
+                tmp_path = meta_path + ".tmp"
+                with open(tmp_path, 'w', encoding='utf-8') as f:
+                    json.dump(self.metadata, f, ensure_ascii=False, indent=2)
+                os.replace(tmp_path, meta_path)
+                print(f"Transaction committed: {self.index.ntotal} total vectors.")
+            elif exc_type is not None:
+                print(f"Transaction rolled back due to error: {exc_val}")
+        finally:
+            # ALWAYS release the lock so other threads can work
+            _global_lock.release()
 
-    Args:
-        index: FAISS index to save
-        metadata: List of chunk metadata dictionaries
-        save_path: Directory path to save index and metadata
+    def add(self, embeddings: np.ndarray, chunks: List[dict]):
+        """Internal helper to add data during the transaction."""
+        if self.index is None:
+            # Default to 1024 if index doesn't exist yet
+            dim = embeddings.shape[1]
+            self.index = faiss.IndexFlatL2(dim)
+        
+        if embeddings.dtype != np.float32:
+            embeddings = embeddings.astype(np.float32)
+            
+        self.index.add(embeddings)
+        self.metadata.extend(chunks)
 
-    Creates:
-        - {save_path}/index.faiss: Binary FAISS index
-        - {save_path}/metadata.json: Chunk metadata array
+    def delete_by_filter(self, key: str, value: Any):
+        """Internal helper to remove data during the transaction."""
+        if not self.index:
+            return
+        
+        # Find indices while locked (guarantees they won't shift)
+        ids_to_remove = [i for i, m in enumerate(self.metadata) if m.get(key) == value]
+        
+        if ids_to_remove:
+            self.index.remove_ids(np.array(ids_to_remove).astype('int64'))
+            # Delete metadata from back to front
+            for i in sorted(ids_to_remove, reverse=True):
+                del self.metadata[i]
+            print(f"Deleted {len(ids_to_remove)} vectors matching {key}={value}")
 
-    Note:
-        Document mapping is already in storage/doc_mapping.json
-        This metadata only contains chunk-level information
-    """
-    # Ensure save directory exists
-    os.makedirs(save_path, exist_ok=True)
-
-    # Save FAISS index
-    index_path = os.path.join(save_path, "index.faiss")
-    faiss.write_index(index, index_path)
-
-    # Save metadata
-    metadata_path = os.path.join(save_path, "metadata.json")
-    with open(metadata_path, 'w', encoding='utf-8') as f:
-        json.dump(metadata, f, ensure_ascii=False, indent=2)
-
-    print(f"Saved FAISS index to: {index_path}")
-    print(f"Saved metadata to: {metadata_path}")
-    print(f"Total vectors: {index.ntotal}")
-
-
-def load_faiss_index(load_path: str) -> Tuple[faiss.Index, List[dict]]:
-    """
-    Load persisted FAISS index and metadata.
-
-    Args:
-        load_path: Directory containing index and metadata files
-
-    Returns:
-        Tuple of (index, metadata_list)
-
-    Raises:
-        FileNotFoundError: If index or metadata files don't exist
-    """
-    index_path = os.path.join(load_path, "index.faiss")
-    metadata_path = os.path.join(load_path, "metadata.json")
-
-    if not os.path.exists(index_path):
-        raise FileNotFoundError(f"FAISS index not found at: {index_path}")
-
-    if not os.path.exists(metadata_path):
-        raise FileNotFoundError(f"Metadata not found at: {metadata_path}")
-
-    # Load FAISS index
-    index = faiss.read_index(index_path)
-
-    # Load metadata
-    with open(metadata_path, 'r', encoding='utf-8') as f:
-        metadata = json.load(f)
-
-    print(f"Loaded FAISS index from: {index_path}")
-    print(f"Total vectors: {index.ntotal}")
-    print(f"Total metadata entries: {len(metadata)}")
-
-    return index, metadata
-
-
-def add_embeddings_to_index(
-    index: faiss.Index,
-    embeddings: np.ndarray,
-    metadata: List[dict]
-) -> List[dict]:
-    """
-    Add new embeddings to FAISS index.
-
-    Args:
-        index: FAISS index to update
-        embeddings: Numpy array of embeddings (shape: n_vectors x dimension)
-        metadata: List of metadata dictionaries to append
-
-    Returns:
-        Updated metadata list
-
-    Note:
-        Embeddings must be float32 for FAISS
-        Metadata list is returned (caller should save separately)
-    """
-    # Ensure embeddings are float32
-    if embeddings.dtype != np.float32:
-        embeddings = embeddings.astype(np.float32)
-
-    # Add to index
-    index.add(embeddings)
-
-    print(f"Added {len(embeddings)} vectors to index")
-    print(f"Total vectors in index: {index.ntotal}")
-
-    return metadata
+# Keep this for your Retriever which only reads
+def load_faiss_index(load_path: str):
+    with _global_lock:
+        index = faiss.read_index(os.path.join(load_path, "index.faiss"))
+        with open(os.path.join(load_path, "metadata.json"), 'r', encoding='utf-8') as f:
+            metadata = json.load(f)
+        return index, metadata
