@@ -44,7 +44,7 @@ def run_indexing_pipeline(metadata_folder: str):
         with open(file_path, 'r', encoding='utf-8') as f:
             chunks = json.load(f)
             
-        index_single_json_file(chunks, embedder, filename)
+        index_single_json_file(chunks, embedder)
     
     print(f"Bulk indexing of {len(json_files)} files complete.")
 
