@@ -1,4 +1,4 @@
-from src.app.chatbot.utils.preprocess_dataset import run_indexing_pipeline
+from src.app.utils.preprocess_dataset import run_indexing_pipeline
 
 if __name__ == "__main__":
     regulation_path_file = "metadata/ระเบียบ/"

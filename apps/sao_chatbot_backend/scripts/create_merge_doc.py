@@ -1,6 +1,6 @@
-from app.chatbot.utils.chunking import chunk_by_clause
-from app.chatbot.utils.embedding import BGEEmbedder
-from src.app.chatbot.utils.preprocess_dataset import index_single_json_file, update_document_expiry_pipeline
+from src.app.utils.chunking import chunk_by_clause
+from src.app.utils.embedding import BGEEmbedder
+from src.app.utils.preprocess_dataset import index_single_json_file, update_document_expiry_pipeline
 
 if __name__ == "__main__":
     old_document_id = "test1"

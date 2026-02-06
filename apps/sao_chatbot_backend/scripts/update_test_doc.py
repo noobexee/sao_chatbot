@@ -1,6 +1,6 @@
-from src.app.chatbot.utils.chunking import chunk_by_clause
-from src.app.chatbot.utils.embedding import BGEEmbedder
-from src.app.chatbot.utils.preprocess_dataset import update_document_pipeline
+from src.app.utils.chunking import chunk_by_clause
+from src.app.utils.embedding import BGEEmbedder
+from src.app.utils.preprocess_dataset import update_document_pipeline
 
 if __name__ == "__main__":
     file_path = "data/test/test1.txt"

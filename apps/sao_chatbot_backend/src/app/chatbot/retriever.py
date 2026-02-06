@@ -4,9 +4,9 @@ from pythainlp import word_tokenize
 from langchain_core.documents import Document
 import numpy as np
 from rank_bm25 import BM25Okapi
-from src.app.chatbot.utils.embedding import BGEEmbedder
+from src.app.utils.embedding import BGEEmbedder
 from src.db.vector_store import load_faiss_index, _global_lock
-from ..utils import time_execution
+from ..utils.timer import time_execution
 
 class Retriever:
     def __init__(self):
@@ -14,17 +14,16 @@ class Retriever:
         self.reload_resources()
 
     def reload_resources(self):
-        """Reloads FAISS, Metadata, and BM25 under a single lock."""
-        with _global_lock:
-            print("Reloading retriever resources...")
-            self.index, self.metadata_list = load_faiss_index("storage/faiss_index")
+
+        print("Reloading retriever resources...")
+        self.index, self.metadata_list = load_faiss_index("storage/faiss_index")
+        
+        self.corpus = [ 
+            word_tokenize(doc.get("text", "").lower(), engine="newmm") 
+            for doc in self.metadata_list
+        ]
+        self.bm25 = BM25Okapi(self.corpus)
             
-            # Rebuild the BM25 corpus to match the new metadata
-            self.corpus = [ 
-                word_tokenize(doc.get("text", "").lower(), engine="newmm") 
-                for doc in self.metadata_list
-            ]
-            self.bm25 = BM25Okapi(self.corpus)
     def filter_search(self, candidates, k, search_date=None):
         if not search_date:
             target_dt = datetime.now()

@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import Any
 import numpy as np
-from src.app.chatbot.utils.embedding import BGEEmbedder
+from src.app.utils.embedding import BGEEmbedder
 from src.db.vector_store import VectorStoreTransaction
 
 VECTOR_STORE_DIR = "storage/faiss_index"
