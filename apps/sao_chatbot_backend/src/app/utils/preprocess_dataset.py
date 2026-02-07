@@ -22,7 +22,8 @@ def index_single_json_file(chunks: list, embedder: BGEEmbedder,):
             vs.add(new_embeddings, chunks)
         
     except Exception as e:
-        print(f"Failed to index {chunks[0].law_name}: {str(e)}")
+        print(f"Failed to index {chunks[0]}")
+        print(f"{str(e)}")
 
 def run_indexing_pipeline(metadata_folder: str):
     """

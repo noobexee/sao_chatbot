@@ -1,13 +1,10 @@
-from fastapi.responses import Response
 from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks, Form
+from fastapi.responses import Response, StreamingResponse
 from typing import Optional, List
 from datetime import datetime, date
-from src.app.service.ocr_service import run_ocr_and_update_db
-from src.app.manager.document import DocumentMeta
-from src.db.repositories.document_repository import DocumentRepository
-from fastapi.responses import StreamingResponse
 from io import BytesIO
 from urllib.parse import quote
+from src.app.document.documentManage import manager
 
 router = APIRouter()
 
@@ -24,17 +21,15 @@ def parse_date(value: Optional[str]) -> Optional[date]:
 
 @router.get("/doc")
 def list_documents():
-    repo = DocumentRepository()
-    return repo.list_documents()
+    return manager.list_documents()
 
 @router.get("/doc/{doc_id}/original")
 def get_original_pdf(doc_id: str):
-    repo = DocumentRepository()
-
     try:
-        file_name, pdf_bytes = repo.get_original_pdf(doc_id)
+        file_name, pdf_bytes = manager.get_original_pdf(doc_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
     if isinstance(file_name, bytes):
         file_name = file_name.decode("utf-8", errors="ignore")
 
@@ -49,11 +44,12 @@ def get_original_pdf(doc_id: str):
         media_type="application/pdf",
         headers={
             "Content-Disposition": (
-                f"inline; filename=\"{ascii_fallback}\"; "
+                f'inline; filename="{ascii_fallback}"; '
                 f"filename*=UTF-8''{utf8_filename}"
             )
         },
     )
+
 
 @router.post("/doc")
 def upload_new_pdf(
@@ -70,10 +66,9 @@ def upload_new_pdf(
     if not main_file.content_type or "pdf" not in main_file.content_type.lower():
         raise HTTPException(400, "main_file must be a PDF")
 
-    repo = DocumentRepository()
     main_pdf_bytes = main_file.file.read()
 
-    result = repo.save_document(
+    result = manager.create_document(
         doc_type=doc_type,
         title=title,
         announce_date=announce_date,
@@ -88,7 +83,7 @@ def upload_new_pdf(
     )
 
     background_tasks.add_task(
-        run_ocr_and_update_db,
+        manager.handle_ocr,
         doc_id=result["id"],
         pdf_bytes=main_pdf_bytes,
     )
@@ -96,11 +91,12 @@ def upload_new_pdf(
     return result
 
 
+
+
 @router.get("/doc/{doc_id}/status")
 def get_status(doc_id: str):
-    repo = DocumentRepository()
     try:
-        return repo.get_status(doc_id)
+        return manager.get_status(doc_id)
     except ValueError as e:
         raise HTTPException(404, str(e))
 
@@ -122,10 +118,8 @@ def edit_doc(
     except Exception:
         raise HTTPException(400, "Invalid text file")
 
-    repo = DocumentRepository()
-
     try:
-        repo.edit_doc(
+        manager.edit_document(
             doc_id=doc_id,
             title=title,
             type=type,
@@ -141,11 +135,11 @@ def edit_doc(
         "doc_id": doc_id,
     }
 
+
 @router.get("/doc/{doc_id}/text")
 def get_text(doc_id: str):
-    repo = DocumentRepository()
     try:
-        text = repo.get_text(doc_id)
+        text = manager.get_text(doc_id)
     except ValueError as e:
         raise HTTPException(404, str(e))
 
@@ -155,20 +149,18 @@ def get_text(doc_id: str):
     )
 
 
-@router.get("/doc/{doc_id}/meta", response_model=DocumentMeta)
+@router.get("/doc/{doc_id}/meta")
 def get_metadata(doc_id: str):
-    repo = DocumentRepository()
     try:
-        return repo.get_metadata(doc_id)
+        return manager.get_metadata(doc_id)
     except ValueError as e:
         raise HTTPException(404, str(e))
 
+
 @router.delete("/doc/{doc_id}")
 def delete_document(doc_id: str):
-    repo = DocumentRepository()
-
     try:
-        repo.delete_document(doc_id)
+        manager.delete_document(doc_id)
     except ValueError as e:
         raise HTTPException(404, str(e))
 
