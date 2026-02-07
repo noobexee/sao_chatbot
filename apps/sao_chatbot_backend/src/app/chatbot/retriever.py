@@ -4,20 +4,26 @@ from pythainlp import word_tokenize
 from langchain_core.documents import Document
 import numpy as np
 from rank_bm25 import BM25Okapi
-from src.app.chatbot.utils.embedding import BGEEmbedder
-from src.db.vector_store import load_faiss_index
-from ..utils import time_execution
+from src.app.utils.embedding import BGEEmbedder
+from src.db.vector_store import load_faiss_index, _global_lock
+from ..utils.timer import time_execution
 
 class Retriever:
     def __init__(self):
         self.embedder = BGEEmbedder(model_name="BAAI/bge-m3")
+        self.reload_resources()
+
+    def reload_resources(self):
+
+        print("Reloading retriever resources...")
         self.index, self.metadata_list = load_faiss_index("storage/faiss_index")
+        
         self.corpus = [ 
             word_tokenize(doc.get("text", "").lower(), engine="newmm") 
             for doc in self.metadata_list
         ]
         self.bm25 = BM25Okapi(self.corpus)
-        
+            
     def filter_search(self, candidates, k, search_date=None):
         if not search_date:
             target_dt = datetime.now()
@@ -60,7 +66,10 @@ class Retriever:
     
     def vector_search(self, query_text: str, k: int) -> List[Dict]:
         query_vector = self.embedder.embed_query(query_text)
-        distances, indices = self.index.search(query_vector, k * 10)
+        
+        with _global_lock:
+            distances, indices = self.index.search(query_vector, k * 10)
+            
         results = []
         for i, idx in enumerate(indices[0]):
             if idx == -1: continue

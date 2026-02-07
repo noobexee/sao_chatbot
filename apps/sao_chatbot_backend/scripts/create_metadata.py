@@ -1,4 +1,4 @@
-from src.app.chatbot.utils.chunking import process_folders
+from src.app.utils.chunking import process_folders
 
 if __name__ == "__main__":
     

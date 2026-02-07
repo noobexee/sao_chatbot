@@ -57,6 +57,7 @@ def chunk_by_size(
     expire_date: Optional[str] = None,
     version: int = 1,
     document_id: Optional[str] = None,
+    doc_type: str = None,
 
 ) -> List[Dict]:
     ext_law_name, ext_refs, lines = extract_header_and_footer(text)
@@ -78,7 +79,7 @@ def chunk_by_size(
             "document_id": document_id,
             "law_name": final_law_name,
             "text": chunk_text,
-            "doc_type": "แนวทาง",
+            "doc_type": doc_type,
             "announce_date": announce_date,
             "effective_date": effective_date,
             "expire_date": expire_date,
@@ -99,6 +100,7 @@ def chunk_by_clause(
     expire_date: Optional[str] = None,
     version: int = 1,
     document_id: Optional[str] = None,
+    doc_type: str = None,
 ) -> List[Dict]:
     ext_law_name, ext_refs, lines = extract_header_and_footer(text)
     final_law_name = law_name if law_name is not None else ext_law_name
@@ -136,7 +138,7 @@ def chunk_by_clause(
             "document_id": document_id,
             "law_name": final_law_name,
             "text": text_content,
-            "doc_type": "ระเบียบ",
+            "doc_type": doc_type,
             "announce_date": announce_date,
             "effective_date": effective_date,
             "expire_date": expire_date,
@@ -210,6 +212,7 @@ def process_folders(input_root: str, output_root: str, metadata_file: str = "met
                     effective_date=file_meta.get("effective"),
                     expire_date=file_meta.get("expire"),
                     version=int(file_meta.get("version", 1)),
+                    doc_type=folder_name,
                 )
                 
                 out_name = output_dir / f"{file_path.stem}_metadata.json"

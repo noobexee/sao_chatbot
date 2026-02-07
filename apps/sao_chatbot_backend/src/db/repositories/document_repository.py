@@ -1,12 +1,9 @@
-from pathlib import Path
 from typing import Optional, List
 from datetime import date
 import uuid
 import json
 from src.db.connection import get_db_connection
-from src.app.manager.document import DocumentMeta
-from PyPDF2 import PdfReader, PdfWriter
-import io
+from src.app.document.documentSchemas import DocumentMeta
 
 class DocumentRepository:
 
@@ -14,106 +11,21 @@ class DocumentRepository:
         self,
         *,
         doc_type: str,
-        title: Optional[str],
+        title: str,
+        version: int,
         announce_date: date,
         effective_date: date,
-        is_first_version: bool,
-        previous_doc_id: Optional[str],
+        is_latest: bool,
+        meta: DocumentMeta,
         main_file_name: str,
         main_file_bytes: bytes,
         related_files: Optional[List[tuple[str, bytes]]],
     ) -> dict:
         conn = None
         try:
-            if previous_doc_id and is_first_version:
-                raise ValueError("is_first_version cannot be true when previous_doc_id is provided")
-
             conn = get_db_connection()
             cur = conn.cursor()
-
-            base_meta: Optional[DocumentMeta] = None
-
-            if previous_doc_id:
-                cur.execute(
-                    "SELECT meta_json FROM documents WHERE id = %s",
-                    (previous_doc_id,),
-                )
-                row = cur.fetchone()
-                if not row:
-                    raise ValueError("previous document not found")
-
-                meta_list = row[0] or []
-                if meta_list:
-                    base_meta = DocumentMeta.model_validate(meta_list[-1])
-
-            if base_meta:
-                safe_type = base_meta.type
-                derived_title = base_meta.title
-                version = base_meta.version + 1
-
-                cur.execute(
-                    """
-                    UPDATE documents
-                    SET is_latest = FALSE
-                    WHERE type = %s AND title = %s
-                    """,
-                    (safe_type, derived_title),
-                )
-            else:
-                safe_type = doc_type.strip().lower().replace(" ", "_")
-                derived_title = title or main_file_name.rsplit(".", 1)[0]
-
-                if is_first_version:
-                    version = 1
-                else:
-                    cur.execute(
-                        """
-                        SELECT COALESCE(MAX(version), 0)
-                        FROM documents
-                        WHERE type = %s AND title = %s
-                        """,
-                        (safe_type, derived_title),
-                    )
-                    version = cur.fetchone()[0] + 1
-
-                    cur.execute(
-                        """
-                        UPDATE documents
-                        SET is_latest = FALSE
-                        WHERE type = %s AND title = %s
-                        """,
-                        (safe_type, derived_title),
-                    )
-
             doc_id = str(uuid.uuid4())
-            related_form_id: Optional[List[str]] = None
-
-            if related_files:
-                related_form_id = []
-                for filename, content in related_files:
-                    rel_id = str(uuid.uuid4())
-                    related_form_id.append(rel_id)
-
-                    cur.execute(
-                        """
-                        INSERT INTO document_files (id, document_id, file_name, file_data)
-                        VALUES (%s, %s, %s, %s)
-                        """,
-                        (rel_id, doc_id, filename, content),
-                    )
-
-            meta = DocumentMeta(
-                title=derived_title,
-                type=safe_type,
-                announce_date=announce_date,
-                effective_date=effective_date,
-                version=version,
-                is_snapshot=False,
-                is_latest=True,
-                related_form_id=related_form_id,
-            )
-            meta_json = [meta.model_dump(mode="json")]
-            print(meta_json)
 
             cur.execute(
                 """
@@ -135,25 +47,45 @@ class DocumentRepository:
                 """,
                 (
                     doc_id,
-                    safe_type,
-                    derived_title,
+                    doc_type,
+                    title,
                     version,
                     announce_date,
                     effective_date,
-                    True,
-                    json.dumps(meta_json),
+                    is_latest,
+                    json.dumps(meta.model_dump(mode="json")),
                     main_file_name,
                     main_file_bytes,
                 ),
             )
 
+            related_form_id: Optional[List[str]] = None
+
+            if related_files:
+                related_form_id = []
+                for filename, content in related_files:
+                    file_id = str(uuid.uuid4())
+
+                    cur.execute(
+                        """
+                        INSERT INTO document_files (
+                            id,
+                            document_id,
+                            file_name,
+                            file_data
+                        )
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        (file_id, doc_id, filename, content),
+                    )
+
+                    related_form_id.append(file_id)
+
             conn.commit()
 
             return {
                 "id": doc_id,
-                "title": meta.title,
-                "version": meta.version,
-                "related_form_id": meta.related_form_id,
+                "related_form_id": related_form_id,
             }
 
         except Exception:
@@ -163,6 +95,7 @@ class DocumentRepository:
         finally:
             if conn:
                 conn.close()
+
 
     def list_documents(self) -> List[dict]:
         conn = None
@@ -294,32 +227,14 @@ class DocumentRepository:
         title: str,
         type: str,
         announce_date: date,
-        effective_date: date | None,
+        effective_date: Optional[date],
         text_content: str,
+        meta_json: list,
     ) -> None:
         conn = None
         try:
             conn = get_db_connection()
             cur = conn.cursor()
-
-            cur.execute(
-                "SELECT meta_json FROM documents WHERE id = %s",
-                (doc_id,),
-            )
-            row = cur.fetchone()
-            if not row:
-                raise ValueError("Document not found")
-
-            meta_list = row[0] or []
-
-            latest_meta = DocumentMeta.model_validate(meta_list[-1])
-
-            latest_meta.title = title.strip()
-            latest_meta.type = type.strip().lower().replace(" ", "_")
-            latest_meta.announce_date = announce_date
-            latest_meta.effective_date = effective_date
-
-            meta_list.append(latest_meta.model_dump(mode="json"))
 
             cur.execute(
                 """
@@ -335,15 +250,18 @@ class DocumentRepository:
                 WHERE id = %s
                 """,
                 (
-                    latest_meta.title,
-                    latest_meta.type,
-                    latest_meta.announce_date,
-                    latest_meta.effective_date,
-                    json.dumps(meta_list),
+                    title,
+                    type,
+                    announce_date,
+                    effective_date,
+                    json.dumps(meta_json),
                     text_content,
                     doc_id,
                 ),
             )
+
+            if cur.rowcount == 0:
+                raise ValueError("Document not found")
 
             conn.commit()
 
@@ -371,7 +289,6 @@ class DocumentRepository:
 
             meta_json = row[0]
 
-            # --- normalize meta_json ---
             if isinstance(meta_json, list):
                 if not meta_json:
                     raise ValueError("meta_json is empty list")
@@ -449,19 +366,6 @@ class DocumentRepository:
             if conn:
                 conn.close()
 
-    @staticmethod
-    def merge_pdf_bytes(pdf1: bytes, pdf2: bytes) -> bytes:
-        writer = PdfWriter()
-
-        for data in (pdf1, pdf2):
-            reader = PdfReader(io.BytesIO(data))
-            for page in reader.pages:
-                writer.add_page(page)
-
-        out = io.BytesIO()
-        writer.write(out)
-        return out.getvalue()
-
     def merge_documents(
         self,
         *,
@@ -512,15 +416,6 @@ class DocumentRepository:
                 amend_meta_raw = amend_meta_raw[0]
 
             amend_meta = DocumentMeta.model_validate(amend_meta_raw)
-
-            # ---------- merge PDFs ----------
-            merged_pdf = self.merge_pdf_bytes(base_pdf, amend_pdf)
-
-            merged_file_name = (
-                f"{Path(base_name).stem}"
-                f"__"
-                f"{Path(amend_name).stem}.pdf"
-            )
 
             # ---------- mark base as not latest ----------
             cur.execute(
@@ -575,8 +470,8 @@ class DocumentRepository:
                     merged_meta.version,
                     merged_meta.announce_date,
                     merged_meta.effective_date,
-                    merged_file_name,
-                    merged_pdf,
+                    None,
+                    None,
                     merged_text,
                     merged_meta.model_dump_json(ensure_ascii=False),
                 ),
@@ -584,13 +479,7 @@ class DocumentRepository:
 
             conn.commit()
 
-            return {
-                "id": new_doc_id,
-                "file_name": merged_file_name,
-                "is_snapshot": True,
-                "is_latest": True,
-                "related_form_id": merged_meta.related_form_id,
-            }
+            return new_doc_id
 
         except Exception:
             if conn:
@@ -599,3 +488,31 @@ class DocumentRepository:
         finally:
             if conn:
                 conn.close()
+
+    def bump_version_and_invalidate_latest(self, doc_type: str, title: str) -> int:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT COALESCE(MAX(version), 0)
+            FROM documents
+            WHERE type = %s AND title = %s
+            """,
+            (doc_type, title),
+        )
+        version = cur.fetchone()[0] + 1
+
+        cur.execute(
+            """
+            UPDATE documents
+            SET is_latest = FALSE
+            WHERE type = %s AND title = %s
+            """,
+            (doc_type, title),
+        )
+
+        conn.commit()
+        conn.close()
+
+        return version

@@ -1,6 +1,6 @@
 from datetime import date
-from typing import List, Optional
-from openai import BaseModel   
+from typing import Optional, List
+from pydantic import BaseModel
 
 class DocumentMeta(BaseModel):
     title: str # law_name

@@ -17,8 +17,8 @@ CREATE TABLE IF NOT EXISTS documents (
     pages INTEGER,
 
     -- Content
-    pdf_file_name TEXT NOT NULL,
-    pdf_file_data BYTEA NOT NULL,
+    pdf_file_name TEXT,
+    pdf_file_data BYTEA ,
     text_content TEXT,
 
     -- Metadata (source of truth)

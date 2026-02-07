@@ -1,0 +1,18 @@
+[
+    {
+        "id": "init",
+        "document_id": null,
+        "law_name": "init",
+        "text": "init",
+        "doc_type": "init",
+        "announce_date": "null",
+        "effective_date": null,
+        "expire_date": null,
+        "version": 1,
+        "metadata": {
+            "หมวด": "init",
+            "ส่วน": "",
+            "chunk_index": 0
+        }
+    }
+]

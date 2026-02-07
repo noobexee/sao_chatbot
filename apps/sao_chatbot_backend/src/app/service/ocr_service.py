@@ -58,5 +58,4 @@ def run_ocr_and_update_db(doc_id: str, pdf_bytes: bytes):
         raise
 
     finally:
-        # 6️⃣ cleanup temp files
         shutil.rmtree(work_dir, ignore_errors=True)
