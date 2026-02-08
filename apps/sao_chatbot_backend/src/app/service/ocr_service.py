@@ -1,10 +1,12 @@
 from pathlib import Path
+import tempfile
+import shutil
+from src.db.repositories.ocr_repository import OCRRepository
 from src.app.llm.ocr import TyphoonOCRLoader
-from typing import List
 from langchain_core.documents import Document
 
 
-def typhoon_docs_to_text(docs: List[Document]) -> str:
+def typhoon_docs_to_text(docs: list[Document]) -> str:
     pages = []
 
     for doc in docs:
@@ -17,25 +19,22 @@ def typhoon_docs_to_text(docs: List[Document]) -> str:
     return "\n".join(pages)
 
 
-def write_status(doc_dir: Path, status: str):
-    (doc_dir / "status.txt").write_text(status, encoding="utf-8")
-
-
-def run_ocr_job(pdf_path: Path):
-    """
-    pdf_path = {doc_type}/{doc_id}/{derived_title}.pdf
-    """
-    doc_dir = pdf_path.parent
-
-    text_path = doc_dir / "text.txt"
-    pages_path = doc_dir / "pages.txt"
-
-    def progress_cb(current: int, total: int):
-        write_status(doc_dir, f"processing:page={current}/{total}")
+def run_ocr_and_update_db(doc_id: str, pdf_bytes: bytes):
+    repo = OCRRepository()
 
     try:
-        write_status(doc_dir, "processing")
+        repo.mark_processing(doc_id)
 
+        work_dir = Path(tempfile.mkdtemp(prefix="ocr_"))
+        pdf_path = work_dir / "input.pdf"
+        pdf_path.write_bytes(pdf_bytes)
+
+        def progress_cb(current: int, total: int):
+            repo.update_progress(
+                doc_id=doc_id,
+                current=current,
+                total=total,
+            )
         loader = TyphoonOCRLoader(
             file_path=str(pdf_path),
             progress_cb=progress_cb,
@@ -45,17 +44,18 @@ def run_ocr_job(pdf_path: Path):
         if not documents:
             raise RuntimeError("OCR returned no content")
 
-        text_path.write_text(
-            typhoon_docs_to_text(documents),
-            encoding="utf-8",
+        text_content = typhoon_docs_to_text(documents)
+        pages = len(documents)
+
+        repo.save_ocr_result(
+            doc_id=doc_id,
+            text=text_content,
+            pages=pages,
         )
 
-        pages_path.write_text(str(len(documents)), encoding="utf-8")
-        write_status(doc_dir, "done")
+    except Exception:
+        repo.mark_failed(doc_id)
+        raise
 
-    except Exception as e:
-        write_status(doc_dir, "error")
-        text_path.write_text(
-            f"OCR failed: {str(e)}",
-            encoding="utf-8",
-        )
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)

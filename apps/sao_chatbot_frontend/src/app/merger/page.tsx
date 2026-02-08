@@ -4,14 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getDocuments, DocumentMeta } from "@/libs/doc_manage/getDocuments";
 
-/**
- * Backend returns:
- * {
- *   id,
- *   ...DocumentMeta,
- *   status
- * }
- */
 type DocumentWithStatus = DocumentMeta & {
   id: string;
   status: string;
@@ -74,7 +66,7 @@ export default function MergerHomePage() {
           )}
 
           {filteredDocs.map((doc) => {
-            const canUpdate = doc.status === "done";
+            const canUpdate = doc.status === "done" || doc.status === "merged";
 
             return (
               <div
@@ -95,7 +87,7 @@ export default function MergerHomePage() {
                     ใช้ตั้งแต่ {doc.effective_date}
                   </p>
 
-                  {doc.status !== "done" && (
+                  {doc.status !== "done" && doc.status !== "merged" && (
                     <p className="text-xs text-blue-500">
                       กำลังประมวลผลเอกสาร…
                     </p>

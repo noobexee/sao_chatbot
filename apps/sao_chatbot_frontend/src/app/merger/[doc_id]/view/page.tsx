@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { getDocMeta, DocMeta } from "@/libs/doc_manage/getDocMeta";
 import { getDocText } from "@/libs/doc_manage/getDocText";
 import { checkHasPdf } from "@/libs/doc_manage/getDocOriginal";
@@ -16,10 +16,14 @@ import {
 import { saveDocText } from "@/libs/doc_manage/updateDocument";
 import { deleteDocument } from "@/libs/doc_manage/deleteDoc";
 
+import Toast from "@/components/Toast";
+import OCRProgress from "@/components/OcrProgress";
+
 type ViewMode = "pdf" | "text";
 
 export default function ViewDocumentPage() {
   const params = useParams<{ doc_id: string }>();
+  const router = useRouter();
   const docId = params?.doc_id;
 
   const [meta, setMeta] = useState<DocMeta | null>(null);
@@ -38,6 +42,8 @@ export default function ViewDocumentPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<PreviewFile | null>(null);
+
+  const [toast, setToast] = useState<string | null>(null);
 
   function isoToThaiDate(value?: string) {
     if (!value) return "";
@@ -74,6 +80,7 @@ export default function ViewDocumentPage() {
     return `${dd} ${monthMap[mm]} พ.ศ. ${yyyy}`;
   }
 
+  /* ---------- load ---------- */
   useEffect(() => {
     if (!docId) return;
 
@@ -95,6 +102,7 @@ export default function ViewDocumentPage() {
       .catch(() => setText(null));
   }, [docId]);
 
+  /* ---------- preview ---------- */
   useEffect(() => {
     if (!docId || !hasPdf || mode !== "pdf") return;
 
@@ -111,6 +119,7 @@ export default function ViewDocumentPage() {
     };
   }, [currentFile]);
 
+  /* ---------- OCR polling ---------- */
   useEffect(() => {
     if (!docId) return;
     if (status === "done" || status === "merged") return;
@@ -143,6 +152,7 @@ export default function ViewDocumentPage() {
     return () => clearTimeout(timer);
   }, [docId, status]);
 
+  /* ---------- save ---------- */
   const onSave = async () => {
     if (!docId || !editMeta) return;
 
@@ -161,8 +171,8 @@ export default function ViewDocumentPage() {
       setMeta(editMeta);
       setText(draft);
       setEditing(false);
+      setToast("บันทึกเอกสารเรียบร้อย");
 
-      // 🔔 notify sidebar
       window.dispatchEvent(new Event("documents:updated"));
     } catch {
       setError("บันทึกข้อมูลไม่สำเร็จ");
@@ -171,6 +181,7 @@ export default function ViewDocumentPage() {
     }
   };
 
+  /* ---------- delete ---------- */
   const onDelete = async () => {
     if (!docId) return;
     if (!confirm("ยืนยันการลบเอกสารนี้?")) return;
@@ -178,6 +189,11 @@ export default function ViewDocumentPage() {
     try {
       await deleteDocument(docId);
       window.dispatchEvent(new Event("documents:updated"));
+      setToast("ลบเอกสารแล้ว");
+
+      setTimeout(() => {
+        router.push("/merger");
+      }, 1200);
     } catch {
       setError("ลบเอกสารไม่สำเร็จ");
     }
@@ -186,7 +202,8 @@ export default function ViewDocumentPage() {
   if (!docId) {
     return <div className="p-6 text-red-500">Document ID not found</div>;
   }
-  /* UI BELOW — UNCHANGED */
+
+  /* ================= UI ================= */
   return (
     <div className="flex h-full flex-col p-4 md:p-6">
       {/* ===== Header ===== */}
@@ -200,9 +217,7 @@ export default function ViewDocumentPage() {
             className="w-full border rounded px-3 py-1 text-sm"
           />
         ) : (
-          <h1 className="text-base font-semibold">
-            {meta?.title ?? "—"}
-          </h1>
+          <h1 className="text-base font-semibold">{meta?.title ?? "—"}</h1>
         )}
 
         {meta && (
@@ -222,8 +237,7 @@ export default function ViewDocumentPage() {
                   value={editMeta?.announce_date ?? ""}
                   onChange={(e) =>
                     setEditMeta(
-                      (m) =>
-                        m && { ...m, announce_date: e.target.value }
+                      (m) => m && { ...m, announce_date: e.target.value }
                     )
                   }
                 />
@@ -234,10 +248,7 @@ export default function ViewDocumentPage() {
                   onChange={(e) =>
                     setEditMeta(
                       (m) =>
-                        m && {
-                          ...m,
-                          effective_date: e.target.value,
-                        }
+                        m && { ...m, effective_date: e.target.value }
                     )
                   }
                 />
@@ -247,14 +258,10 @@ export default function ViewDocumentPage() {
                 {meta.type && <span>ประเภท {meta.type}</span>}
                 {meta.version && <span>ฉบับที่ {meta.version}</span>}
                 {meta.announce_date && (
-                  <span>
-                    ประกาศ {isoToThaiDate(meta.announce_date)}
-                  </span>
+                  <span>ประกาศ {isoToThaiDate(meta.announce_date)}</span>
                 )}
                 {meta.effective_date && (
-                  <span>
-                    มีผลใช้ {isoToThaiDate(meta.effective_date)}
-                  </span>
+                  <span>มีผลใช้ {isoToThaiDate(meta.effective_date)}</span>
                 )}
               </>
             )}
@@ -280,9 +287,7 @@ export default function ViewDocumentPage() {
             <button
               onClick={() => setMode("text")}
               className={`px-4 py-1 text-sm ${
-                mode === "text"
-                  ? "bg-gray-200 font-medium"
-                  : ""
+                mode === "text" ? "bg-gray-200 font-medium" : ""
               }`}
             >
               Text
@@ -354,9 +359,7 @@ export default function ViewDocumentPage() {
               />
             )}
 
-            {error && (
-              <p className="text-sm text-red-500">{error}</p>
-            )}
+            {error && <p className="text-sm text-red-500">{error}</p>}
 
             {(status === "done" || status === "merged") &&
               (editing ? (
@@ -366,45 +369,18 @@ export default function ViewDocumentPage() {
                   className="w-full h-[70vh] border rounded p-4 font-mono text-sm"
                 />
               ) : (
-                <pre className="whitespace-pre-wrap text-sm">
-                  {text}
-                </pre>
+                <pre className="whitespace-pre-wrap text-sm">{text}</pre>
               ))}
           </div>
         )}
       </div>
-    </div>
-  );
-}
 
-function OCRProgress({
-  status,
-  page,
-  totalPages,
-  message,
-}: {
-  status: string;
-  page: number | null;
-  totalPages: number | null;
-  message?: string;
-}) {
-  const percent =
-    page && totalPages ? Math.round((page / totalPages) * 100) : 0;
-
-  return (
-    <div className="max-w-md space-y-2">
-      <p className="text-sm text-gray-600">
-        {message}
-        {page && totalPages && (
-          <> • หน้า {page}/{totalPages}</>
-        )}
-      </p>
-      <div className="h-2 w-full rounded bg-gray-200">
-        <div
-          className="h-full bg-blue-500 transition-all"
-          style={{ width: `${percent}%` }}
-        />
-      </div>
+      {/* ===== Toast ===== */}
+      <Toast
+        show={!!toast}
+        message={toast ?? ""}
+        onClose={() => setToast(null)}
+      />
     </div>
   );
 }

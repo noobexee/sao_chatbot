@@ -165,7 +165,7 @@ export default function MergerLayout({
                     {doc.type} • ฉบับที่ {doc.version ?? "-"}
                   </p>
 
-                  {doc.status && doc.status !== "done" && (
+                  {doc.status && doc.status !== "done" && doc.status !== "merged" && (
                     <div className="mt-1">
                       <p className="text-[11px] text-blue-500">
                         {doc.status === "processing"
