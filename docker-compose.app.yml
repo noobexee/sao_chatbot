@@ -4,6 +4,8 @@ services:
       context: ./apps/sao_chatbot_backend
       dockerfile: Dockerfile
     restart: always
+    volumes:
+      - ./apps/sao_chatbot_backend/storage/faiss_index:/app/storage/faiss_index
     ports:
       - "${BACKEND_PORT}:${BACKEND_PORT}" 
     env_file:
