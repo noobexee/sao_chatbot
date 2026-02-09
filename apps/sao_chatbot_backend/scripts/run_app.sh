@@ -1,12 +1,11 @@
 #!/bin/sh
 
-echo "Ingesting Data into FAISS"
-python scripts/ingest_data.py
-
-if [ $? -eq 0 ]; then
-    echo "Step 2: Starting FastAPI Serve"
-    exec uvicorn main:app --host 0.0.0.0 --port 8000
+if [ ! -f "/app/storage/faiss_index/index.faiss" ]; then
+    echo "FAISS index not found in storage. Ingesting Data..."
+    python scripts/ingest_data.py
 else
-    echo "Ingestion failed! Blocking server start."
-    exit 1
+    echo "Found persistent FAISS index in storage. Skipping ingestion."
 fi
+
+echo "Starting FastAPI Server..."
+exec uvicorn main:app --host 0.0.0.0 --port 8000

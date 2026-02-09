@@ -211,6 +211,8 @@ class Chatbot:
                 - Use bullet points for lists of legal requirements or conditions.
                 - Use bold text for key legal terms or specific Section/Article numbers.
                 
+                ### Mandatory Refusal
+                If the query cannot be answered by the context, respond: "ขออภัยครับ ข้อมูลในเอกสารที่ได้รับมาไม่ครอบคลุมประเด็นนี้ ผมจึงไม่สามารถให้คำตอบที่ถูกต้องตามกฎหมายได้"
                 """),
                 ("human", "{query}")
             ]

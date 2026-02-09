@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { uploadDocument } from "@/libs/doc_manage/uploadDocument";
 import { getDocuments, DocumentMeta } from "@/libs/doc_manage/getDocuments";
 import { getDocStatus, DocStatusResponse } from "@/libs/doc_manage/getDocStatus";
+import OCRProgress from "@/components/OcrProgress";
 
 /* ---------- helpers (unchanged) ---------- */
 function formatDDMMYYYY(value: string) {
@@ -42,8 +43,6 @@ export default function NewDocumentPage() {
   const [validFrom, setValidFrom] = useState("");
   const [validUntil, setValidUntil] = useState("");
   const [isFirstVersion, setIsFirstVersion] = useState(true);
-
-  /* NEW */
   const [hasPrevious, setHasPrevious] = useState(false);
   const [previousDocId, setPreviousDocId] = useState<string>("");
 
@@ -112,7 +111,7 @@ export default function NewDocumentPage() {
         announce_date: announceIso,
         effective_date: effectiveIso,
         is_first_version: isFirstVersion,
-        version: prev?.version ? prev.version + 1 : 1,
+        previous_doc_id: prev && !isFirstVersion ? prev.id : undefined,
         main_file: mainFile,
         related_files: optionalFiles.length ? optionalFiles : undefined,
       });
@@ -141,7 +140,6 @@ export default function NewDocumentPage() {
       setStatus(res.status);
       setPage(res.current_page ?? null);
       setTotalPages(res.total_pages ?? null);
-      setStatusMessage(res.message ?? "กำลังประมวลผล…");
 
       if (res.status === "done" || res.status === "merged") {
         window.dispatchEvent(new Event("documents:updated"));
@@ -342,39 +340,9 @@ export default function NewDocumentPage() {
           status={status}
           page={page}
           totalPages={totalPages}
-          message={statusMessage}
+          message= "กำลังประมวลผล…"
         />
       )}
-    </div>
-  );
-}
-
-function OCRProgress({
-  status,
-  page,
-  totalPages,
-  message,
-}: {
-  status: string;
-  page: number | null;
-  totalPages: number | null;
-  message?: string | null;
-}) {
-  const percent =
-    page && totalPages ? Math.round((page / totalPages) * 100) : 0;
-
-  return (
-    <div className="space-y-2">
-      <p className="text-sm text-gray-600">
-        {message}
-        {page && totalPages && <> • หน้า {page}/{totalPages}</>}
-      </p>
-      <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-blue-500 transition-all"
-          style={{ width: `${percent}%` }}
-        />
-      </div>
     </div>
   );
 }

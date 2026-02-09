@@ -16,7 +16,6 @@ export interface DocMeta {
   version: number | null;
   is_snapshot: boolean;
   is_latest: boolean;
-  related_form_id: string[] | null;
   status?: string;
   current_page?: number;
   total_pages?: number;
@@ -58,7 +57,8 @@ export default function MergerLayout({
   useEffect(() => {
     const handler = () => loadDocuments();
     window.addEventListener("documents:updated", handler);
-    return () => window.removeEventListener("documents:updated", handler);
+    return () =>
+      window.removeEventListener("documents:updated", handler);
   }, [loadDocuments]);
 
   /* ---------------- status polling (OCR / merge) ---------------- */
@@ -73,17 +73,9 @@ export default function MergerLayout({
     if (!active.length) return;
 
     const timer = setInterval(async () => {
-      setDocs((prev) =>
-        prev.map((doc) => {
-          if (!doc.status || doc.status === "done") return doc;
-          return doc;
-        })
-      );
-
       for (const doc of active) {
         try {
           const s = await getDocStatus(doc.id);
-
           setDocs((prev) =>
             prev.map((d) =>
               d.id === doc.id
@@ -140,6 +132,11 @@ export default function MergerLayout({
 
           <div className="space-y-2 pb-10">
             {docs.map((doc) => {
+              const isNeedAttention =
+                doc.status === "need_attention";
+              const isLatest = doc.is_latest;
+              const isSnapshot = doc.is_snapshot;
+
               const percent =
                 doc.current_page && doc.total_pages
                   ? Math.round(
@@ -153,33 +150,62 @@ export default function MergerLayout({
                   href={`/merger/${doc.id}/view`}
                   className={`block rounded-xl px-4 py-2 transition
                     ${
-                      params?.doc_id === doc.id
+                      isNeedAttention
+                        ? "bg-yellow-50 hover:bg-yellow-100"
+                        : params?.doc_id === doc.id
                         ? "bg-[#e8eaed] font-semibold"
                         : "hover:bg-[#e8eaed]"
                     }`}
                 >
-                  <p className="truncate text-sm text-gray-700">
-                    {doc.title}
-                  </p>
+                  {/* ---------- title row ---------- */}
+                  <div className="flex items-center gap-1">
+                    {isNeedAttention && (
+                      <span className="text-yellow-500 text-xs">
+                        ⚠️
+                      </span>
+                    )}
+
+                    {isLatest && !isNeedAttention && (
+                      <span className="h-2 w-2 rounded-full bg-green-500" />
+                    )}
+
+                    <p className="truncate text-sm text-gray-700">
+                      {doc.title}
+                    </p>
+
+                    {isSnapshot && (
+                      <span
+                        className="ml-1 rounded-full bg-purple-100 px-2 py-0.5
+                                   text-[9px] font-semibold text-purple-700"
+                      >
+                        SNAPSHOT
+                      </span>
+                    )}
+                  </div>
+
+                  {/* ---------- meta ---------- */}
                   <p className="truncate text-xs text-gray-400">
                     {doc.type} • ฉบับที่ {doc.version ?? "-"}
                   </p>
 
-                  {doc.status && doc.status !== "done" && doc.status !== "merged" && (
-                    <div className="mt-1">
-                      <p className="text-[11px] text-blue-500">
-                        {doc.status === "processing"
-                          ? `OCR ${doc.current_page ?? "?"}/${doc.total_pages ?? "?"}`
-                          : "กำลังประมวลผล…"}
-                      </p>
-                      <div className="h-1 w-full rounded bg-gray-200 overflow-hidden">
-                        <div
-                          className="h-full bg-blue-500 transition-all"
-                          style={{ width: `${percent}%` }}
-                        />
+                  {/* ---------- processing / OCR ---------- */}
+                  {doc.status &&
+                    doc.status !== "done" &&
+                    doc.status !== "merged" && (
+                      <div className="mt-1">
+                        <p className="text-[11px] text-blue-500">
+                          {doc.status === "processing"
+                            ? `OCR ${doc.current_page ?? "?"}/${doc.total_pages ?? "?"}`
+                            : "กำลังประมวลผล…"}
+                        </p>
+                        <div className="h-1 w-full rounded bg-gray-200 overflow-hidden">
+                          <div
+                            className="h-full bg-blue-500 transition-all"
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
                 </Link>
               );
             })}
@@ -200,6 +226,7 @@ export default function MergerLayout({
                 <line x1="3" x2="21" y1="6" y2="6" /><line x1="3" x2="21" y1="12" y2="12" /><line x1="3" x2="21" y1="18" y2="18" />
               </svg>
             </button>
+
             <Link href="/chatbot">
               <div
                 className="cursor-pointer truncate flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 shrink-0" >
@@ -209,6 +236,7 @@ export default function MergerLayout({
                 Chatbot
               </div>
             </Link>
+
             <Link href="/merger">
               <div
                 className="cursor-pointer truncate flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 shrink-0" >

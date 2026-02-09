@@ -4,6 +4,7 @@ from typing import Optional, List
 from datetime import datetime, date
 from io import BytesIO
 from urllib.parse import quote
+
 from src.app.document.documentManage import manager
 
 router = APIRouter()
@@ -19,10 +20,13 @@ def parse_date(value: Optional[str]) -> Optional[date]:
         except ValueError:
             raise HTTPException(400, f"Invalid date format: {value}")
 
+# list 
 @router.get("/doc")
 def list_documents():
     return manager.list_documents()
 
+
+# original pdf 
 @router.get("/doc/{doc_id}/original")
 def get_original_pdf(doc_id: str):
     try:
@@ -33,8 +37,7 @@ def get_original_pdf(doc_id: str):
     if isinstance(file_name, bytes):
         file_name = file_name.decode("utf-8", errors="ignore")
 
-    if not file_name:
-        file_name = "document.pdf"
+    file_name = file_name or "document.pdf"
 
     ascii_fallback = "document.pdf"
     utf8_filename = quote(file_name)
@@ -51,6 +54,7 @@ def get_original_pdf(doc_id: str):
     )
 
 
+# create 
 @router.post("/doc")
 def upload_new_pdf(
     background_tasks: BackgroundTasks,
@@ -78,7 +82,8 @@ def upload_new_pdf(
         main_file_name=main_file.filename,
         main_file_bytes=main_pdf_bytes,
         related_files=[
-            (rf.filename, rf.file.read()) for rf in related_files
+            (rf.filename, rf.file.read())
+            for rf in related_files
         ] if related_files else None,
     )
 
@@ -90,9 +95,7 @@ def upload_new_pdf(
 
     return result
 
-
-
-
+# status
 @router.get("/doc/{doc_id}/status")
 def get_status(doc_id: str):
     try:
@@ -101,6 +104,7 @@ def get_status(doc_id: str):
         raise HTTPException(404, str(e))
 
 
+# edit 
 @router.put("/doc/{doc_id}/edit")
 def edit_doc(
     doc_id: str,
@@ -124,7 +128,7 @@ def edit_doc(
             title=title,
             type=type,
             announce_date=parse_date(announce_date),
-            effective_date=parse_date(effective_date) if effective_date else None,
+            effective_date=parse_date(effective_date),
             text_content=text_content,
         )
     except ValueError as e:
@@ -135,7 +139,7 @@ def edit_doc(
         "doc_id": doc_id,
     }
 
-
+# text
 @router.get("/doc/{doc_id}/text")
 def get_text(doc_id: str):
     try:
@@ -148,7 +152,7 @@ def get_text(doc_id: str):
         media_type="text/plain; charset=utf-8",
     )
 
-
+# metadata
 @router.get("/doc/{doc_id}/meta")
 def get_metadata(doc_id: str):
     try:
@@ -156,7 +160,7 @@ def get_metadata(doc_id: str):
     except ValueError as e:
         raise HTTPException(404, str(e))
 
-
+# delete
 @router.delete("/doc/{doc_id}")
 def delete_document(doc_id: str):
     try:

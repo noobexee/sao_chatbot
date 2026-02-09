@@ -3,13 +3,14 @@ import { getBaseUrl } from "../config";
 export interface UploadPayload {
   doc_type: string;
   title?: string;
-  announce_date: string;   // ISO or DD-MM-YYYY
-  effective_date: string;  // ISO or DD-MM-YYYY
+  announce_date: string;    // ISO or DD-MM-YYYY
+  effective_date: string;   // ISO or DD-MM-YYYY
   is_first_version: boolean;
-  version: number;
 
-  main_file: File;         // mandatory PDF
-  related_files?: File[];  // optional
+  previous_doc_id?: string; // 👈 NEW: used when not first version
+
+  main_file: File;          // mandatory PDF
+  related_files?: File[];   // optional
 }
 
 export interface UploadResponse {
@@ -19,12 +20,11 @@ export interface UploadResponse {
   related_form_id?: string[] | null;
 }
 
-
 export async function uploadDocument(
   payload: UploadPayload,
   signal?: AbortSignal
 ): Promise<UploadResponse> {
-
+  // ---------- validations ----------
   if (!payload.main_file) {
     throw new Error("Main PDF file is required");
   }
@@ -44,12 +44,14 @@ export async function uploadDocument(
     }
   }
 
+  // ---------- build form ----------
   const formData = new FormData();
   formData.append("doc_type", payload.doc_type);
 
   if (payload.title?.trim()) {
     formData.append("title", payload.title.trim());
   }
+
   formData.append("announce_date", payload.announce_date);
   formData.append("effective_date", payload.effective_date);
   formData.append(
@@ -57,12 +59,20 @@ export async function uploadDocument(
     String(payload.is_first_version)
   );
 
+  if (payload.previous_doc_id) {
+    formData.append(
+      "previous_doc_id",
+      payload.previous_doc_id
+    );
+  }
+
   formData.append("main_file", payload.main_file);
 
   payload.related_files?.forEach((file) => {
     formData.append("related_files", file);
   });
 
+  // ---------- request ----------
   const res = await fetch(
     `${getBaseUrl()}/api/v1/merger/doc`,
     {
