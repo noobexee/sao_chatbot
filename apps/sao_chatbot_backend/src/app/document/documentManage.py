@@ -1,6 +1,6 @@
 from typing import Optional, List
 from datetime import date ,timedelta
-from src.app.document.documentSchemas import DocumentMeta
+from src.app.document.documentSchemas import DocumentMeta, MergeRequest
 from src.db.repositories.document_repository import DocumentRepository
 from src.app.document.documentUpdate import DocumentUpdater
 from src.app.service.ocr_service import run_ocr_and_update_db
@@ -62,9 +62,11 @@ class DocumentManager:
         self.updater = DocumentUpdater()
         self.llm = GeminiLLM()
 
+    # ---------- Read ----------
+
     def list_documents(self):
         return self.repo.list_documents()
-
+    
     def get_original_pdf(self, doc_id: str):
         return self.repo.get_original_pdf(doc_id)
 
@@ -78,7 +80,6 @@ class DocumentManager:
         return self.repo.get_metadata(doc_id)
 
     # ---------- Create ----------
-
     def create_document(
         self,
         *,
@@ -92,33 +93,20 @@ class DocumentManager:
         main_file_bytes: bytes,
         related_files: Optional[List[tuple[str, bytes]]],
     ) -> dict:
+
         if previous_doc_id and is_first_version:
-            raise ValueError("is_first_version cannot be true when previous_doc_id is provided")
-
-        base_meta: Optional[DocumentMeta] = None
-
-        if previous_doc_id:
-            base_meta = self.repo.get_metadata(previous_doc_id)
-            if not base_meta:
-                raise ValueError("previous document not found")
-
-        if base_meta:
-            safe_type = base_meta.type
-            derived_title = base_meta.title
-            version = base_meta.version + 1
-
-            self.repo.bump_version_and_invalidate_latest(safe_type, derived_title)
+            raise ValueError(
+                "is_first_version cannot be true when previous_doc_id is provided"
+            )
+        
+        if not is_first_version and previous_doc_id:
+            base_meta =self.repo.bump_version_and_invalidate_latest(previous_doc_id)
+            safe_type, derived_title, prev_version = base_meta
+            version = prev_version + 1
         else:
             safe_type = doc_type.strip().lower().replace(" ", "_")
             derived_title = title or main_file_name.rsplit(".", 1)[0]
-
-            if is_first_version:
-                version = 1
-            else:
-                version = self.repo.bump_version_and_invalidate_latest(
-                    safe_type,
-                    derived_title,
-                )
+            version = 1
 
         meta = DocumentMeta(
             title=derived_title,
@@ -128,16 +116,10 @@ class DocumentManager:
             version=version,
             is_snapshot=False,
             is_latest=True,
-            related_form_id=[],
+            related_form_id=None,
         )
 
         result = self.repo.save_document(
-            doc_type=safe_type,
-            title=derived_title,
-            version=version,
-            announce_date=announce_date,
-            effective_date=effective_date,
-            is_latest=True,
             meta=meta,
             main_file_name=main_file_name,
             main_file_bytes=main_file_bytes,
@@ -152,21 +134,21 @@ class DocumentManager:
             "version": meta.version,
             "related_form_id": meta.related_form_id,
         }
-    
+
+    # ---------- OCR ----------
+
     def handle_ocr(self, *, doc_id: str, pdf_bytes: bytes):
-        
-        run_ocr_and_update_db(doc_id,pdf_bytes)
+
+        run_ocr_and_update_db(doc_id, pdf_bytes)
 
         text = self.repo.get_text(doc_id)
         meta = self.repo.get_metadata(doc_id)
-        
-        res = self.updater.new_document( 
-            doc_data = meta, 
-            doc_id = doc_id,
-            text=text 
-        )
 
-        return res
+        return self.updater.new_document(
+            doc_data=meta,
+            doc_id=doc_id,
+            text=text,
+        )
 
     # ---------- Update ----------
 
@@ -181,32 +163,26 @@ class DocumentManager:
         text_content: str,
     ):
 
-        meta_list = self.repo.get_metadata(doc_id)
-        if not meta_list:
-            raise ValueError("Document not found")
+        meta = self.repo.get_metadata(doc_id)
 
-        meta_list.title = title.strip()
-        meta_list.type = type.strip().lower().replace(" ", "_")
-        meta_list.announce_date = announce_date
-        meta_list.effective_date = effective_date
+        meta.title = title.strip()
+        meta.type = type.strip().lower().replace(" ", "_")
+        meta.announce_date = announce_date
+        meta.effective_date = effective_date
 
         self.repo.edit_doc(
             doc_id=doc_id,
-            title=meta_list.title,
-            type=meta_list.type,
-            announce_date=meta_list.announce_date,
-            effective_date=meta_list.effective_date,
+            meta=meta,
             text_content=text_content,
-            meta_json=[meta_list.model_dump(mode="json")],
         )
 
-        res = self.updater.edit_document(
+        return self.updater.edit_document(
             doc_id=doc_id,
-            doc_data=meta_list,
+            doc_data=meta,
             text=text_content,
         )
 
-        return res
+    # ---------- Merge ----------
 
     def merge_documents(
         self,
@@ -219,14 +195,10 @@ class DocumentManager:
         base_text = self.repo.get_text(base_doc_id)
         amend_text = self.repo.get_text(amend_doc_id)
 
-#        base_meta=self.repo.get_metadata(base_doc_id)
-#        amend_meta=self.repo.get_metadata(amend_doc_id)
-
         if merge_mode == "replace_all":
             merged_text = amend_text
         else:
-            llm = GeminiLLM()
-            response = llm.invoke(
+            response = self.llm.invoke(
                 system_prompt="คุณเป็นผู้เชี่ยวชาญด้านกฎหมายและการรวมเอกสารตามหลักนิติกรรม",
                 prompt=PROMPT_TEXT,
                 txt_files=[
@@ -237,25 +209,35 @@ class DocumentManager:
             )
             merged_text = response.content
 
-        new = self.repo.merge_documents(
+        payload = MergeRequest(
             base_doc_id=base_doc_id,
             amend_doc_id=amend_doc_id,
-            merged_text=merged_text,
-            merge_mode=merge_mode
+            merge_mode=merge_mode,
         )
-        meta = self.repo.get_metadata(new)
+
+        new_doc_id = self.repo.merge_documents(
+            payload=payload,
+            merged_text=merged_text,
+        )
+
+        meta = self.repo.get_metadata(new_doc_id)
+
         self.updater.merge_documents(
             doc_data=meta,
-            old_doc_id= base_doc_id,
-            new_doc_id= amend_doc_id,
-            text= merged_text,
-            expire_date= meta.effective_date + timedelta(days=1),
+            old_doc_id=base_doc_id,
+            new_doc_id=new_doc_id,
+            text=merged_text,
+            expire_date=meta.effective_date + timedelta(days=1),
         )
-        return {"id": new}
+        self.repo.mark_done(base_doc_id)
+
+        return {"id": new_doc_id}
+
+    # ---------- Delete ----------
 
     def delete_document(self, doc_id: str):
         self.repo.delete_document(doc_id)
-        res = self.updater.delete_document(doc_id)
-        return res
+        return self.updater.delete_document(doc_id)
+
 
 manager = DocumentManager()

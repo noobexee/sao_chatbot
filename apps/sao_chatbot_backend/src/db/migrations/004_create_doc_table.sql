@@ -21,9 +21,6 @@ CREATE TABLE IF NOT EXISTS documents (
     pdf_file_data BYTEA ,
     text_content TEXT,
 
-    -- Metadata (source of truth)
-    meta_json JSONB NOT NULL,
-
     -- Versioning flags
     is_latest BOOLEAN NOT NULL DEFAULT TRUE,
     is_snapshot BOOLEAN NOT NULL DEFAULT FALSE,

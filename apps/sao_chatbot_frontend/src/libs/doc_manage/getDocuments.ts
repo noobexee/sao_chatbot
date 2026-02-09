@@ -9,7 +9,6 @@ export interface DocumentMeta {
   version: number | null;         // 1 for first version, +1 per amendment
   is_snapshot: boolean;           // generated from merge (no pdf)
   is_latest: boolean;             // latest version flag
-  related_form_id: string[] | null; // related uploaded forms
 }
 
 export async function getDocuments(): Promise<DocumentMeta[]> {
