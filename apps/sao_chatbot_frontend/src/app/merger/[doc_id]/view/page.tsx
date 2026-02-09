@@ -36,7 +36,6 @@ export default function ViewDocumentPage() {
   const [status, setStatus] = useState("queued");
   const [page, setPage] = useState<number | null>(null);
   const [totalPages, setTotalPages] = useState<number | null>(null);
-  const [message, setMessage] = useState<string | undefined>();
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -44,6 +43,8 @@ export default function ViewDocumentPage() {
   const [currentFile, setCurrentFile] = useState<PreviewFile | null>(null);
 
   const [toast, setToast] = useState<string | null>(null);
+
+  const canViewText = text !== null;
 
   function isoToThaiDate(value?: string) {
     if (!value) return "";
@@ -133,7 +134,6 @@ export default function ViewDocumentPage() {
         setStatus(res.status);
         setPage(res.current_page ?? null);
         setTotalPages(res.total_pages ?? null);
-        setMessage(res.message);
 
         if (res.status === "done" || res.status === "merged") {
           const t = await getDocText(docId);
@@ -268,7 +268,6 @@ export default function ViewDocumentPage() {
           </div>
         )}
 
-        {/* Mode + Actions */}
         <div className="flex justify-between items-center pt-2">
           <div className="flex rounded-full border overflow-hidden">
             <button
@@ -296,7 +295,7 @@ export default function ViewDocumentPage() {
 
           <div className="flex gap-2">
             {mode === "text" &&
-              (status === "done" || status === "merged") &&
+              canViewText &&
               (!editing ? (
                 <button
                   onClick={() => {
@@ -350,18 +349,18 @@ export default function ViewDocumentPage() {
 
         {mode === "text" && (
           <div className="h-full overflow-auto p-6 bg-white space-y-4">
-            {status !== "done" && status !== "merged" && (
+            {!canViewText && (
               <OCRProgress
                 status={status}
                 page={page}
                 totalPages={totalPages}
-                message={message}
+                message="กำลังประมวลผล…"
               />
             )}
 
             {error && <p className="text-sm text-red-500">{error}</p>}
 
-            {(status === "done" || status === "merged") &&
+            {canViewText &&
               (editing ? (
                 <textarea
                   value={draft}
@@ -375,7 +374,6 @@ export default function ViewDocumentPage() {
         )}
       </div>
 
-      {/* ===== Toast ===== */}
       <Toast
         show={!!toast}
         message={toast ?? ""}

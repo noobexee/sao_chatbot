@@ -32,13 +32,18 @@ export default function MergerHomePage() {
     load();
   }, []);
 
-  const filteredDocs = docs.filter((doc) =>
-    doc.title.toLowerCase().includes(query.toLowerCase())
-  );
+  const filteredDocs = docs
+    // ✅ business rule
+    .filter(
+      (doc) => doc.is_latest === true || doc.status === "need_attention"
+    )
+    // 🔍 search
+    .filter((doc) =>
+      doc.title.toLowerCase().includes(query.toLowerCase())
+    );
 
   return (
     <div className="h-full w-full p-6 space-y-4">
-
       <h2 className="text-sm font-semibold text-gray-800">
         เลือกเอกสารที่ต้องการอัปเดต
       </h2>
@@ -62,51 +67,74 @@ export default function MergerHomePage() {
       {!loading && !error && (
         <div className="space-y-2">
           {filteredDocs.length === 0 && (
-            <p className="text-sm text-gray-500">ไม่พบเอกสาร</p>
+            <p className="text-sm text-gray-500">
+              ไม่พบเอกสารที่ตรงเงื่อนไข
+            </p>
           )}
 
           {filteredDocs.map((doc) => {
-            const canUpdate = doc.status === "done" || doc.status === "merged";
+            const needAttention = doc.status === "need_attention";
 
             return (
               <div
                 key={doc.id}
-                className="flex items-center justify-between
-                           rounded-md border border-gray-200 px-4 py-3"
+                onClick={() => router.push(`/merger/${doc.id}/view`)}
+                className={`
+                  cursor-pointer rounded-md border px-4 py-3
+                  transition hover:bg-gray-50
+                  ${
+                    needAttention
+                      ? "border-yellow-300 bg-yellow-50 hover:bg-yellow-100"
+                      : "border-gray-200"
+                  }
+                `}
               >
-                <div className="space-y-0.5">
-                  <p className="text-sm font-medium text-gray-800">
-                    {doc.title}
-                  </p>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-gray-800">
+                        {doc.title}
+                      </p>
 
-                  <p className="text-xs text-gray-500">
-                    {doc.type} • ฉบับที่ {doc.version}
-                  </p>
+                      {doc.is_snapshot && (
+                        <span
+                          className="rounded-full bg-gray-200 px-2 py-0.5
+                                     text-[10px] font-semibold text-gray-700"
+                        >
+                          SNAPSHOT
+                        </span>
+                      )}
+                    </div>
 
-                  <p className="text-xs text-gray-400">
-                    ใช้ตั้งแต่ {doc.effective_date}
-                  </p>
-
-                  {doc.status !== "done" && doc.status !== "merged" && (
-                    <p className="text-xs text-blue-500">
-                      กำลังประมวลผลเอกสาร…
+                    <p className="text-xs text-gray-500">
+                      {doc.type} • ฉบับที่ {doc.version}
                     </p>
+
+                    <p className="text-xs text-gray-400">
+                      ใช้ตั้งแต่ {doc.effective_date}
+                    </p>
+
+                    {needAttention && (
+                      <p className="text-xs font-medium text-yellow-700">
+                        ต้องตรวจสอบเอกสารนี้
+                      </p>
+                    )}
+                  </div>
+
+                  {needAttention && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/merger/${doc.id}/update`);
+                      }}
+                      className="rounded-full border border-yellow-400
+                                 bg-yellow-100 px-4 py-2 text-sm
+                                 hover:bg-yellow-200 transition"
+                    >
+                      Update
+                    </button>
                   )}
                 </div>
-
-                <button
-                  disabled={!canUpdate}
-                  onClick={() => router.push(`/merger/${doc.id}/update`)}
-                  className={`rounded-full border px-4 py-2 text-sm
-                    transition
-                    ${
-                      canUpdate
-                        ? "border-gray-200 hover:bg-gray-50"
-                        : "border-gray-100 text-gray-400 cursor-not-allowed"
-                    }`}
-                >
-                  Update document
-                </button>
               </div>
             );
           })}

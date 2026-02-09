@@ -5,7 +5,6 @@ export interface DocStatusResponse {
   status: string;
   current_page?: number;
   total_pages?: number;
-  message?: string;
 }
 
 export async function getDocStatus(
