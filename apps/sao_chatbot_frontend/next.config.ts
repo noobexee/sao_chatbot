@@ -6,9 +6,8 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        // This maps frontend calls to your backend
         source: '/api/v1/:path*',
-        destination: 'http://3.224.184.102:8000/api/v1/:path*',
+        destination: 'http://backend:8000/api/v1/:path*',
       },
     ];
   },
