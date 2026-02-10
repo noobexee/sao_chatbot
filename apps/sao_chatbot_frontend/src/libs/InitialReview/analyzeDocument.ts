@@ -4,6 +4,7 @@ import { getBaseUrl } from "../config";
 export interface AnalyzeResponse {
     status: string;
     data: {
+        criteria1: any;
         criteria2: any; 
         criteria4: any; 
         criteria6: any;

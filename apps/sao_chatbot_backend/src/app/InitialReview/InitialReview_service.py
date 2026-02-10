@@ -59,13 +59,15 @@ class InitialReviewService:
             criteria2_task = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria2_sao_authority, extracted_text)
             criteria4_task = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria4_sufficiency, extracted_text)
             criteria6_task = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria6_complainant, extracted_text)
+            criteria8_task = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria8_other_authority, extracted_text)
 
-            criteria2_ai_result, criteria4_ai_result, criteria6_ai_result = await asyncio.gather(criteria2_task, criteria4_task, criteria6_task)
+            criteria2_ai_result, criteria4_ai_result, criteria6_ai_result, criteria8_ai_result = await asyncio.gather(criteria2_task, criteria4_task, criteria6_task, criteria8_task)
 
             # 3. Format Response
             criteria2_response = self._format_ai_response(criteria2_ai_result, "criteria2")
             criteria4_response = self._format_ai_response(criteria4_ai_result, "criteria4")
             criteria6_response = self._format_ai_response(criteria6_ai_result, "criteria6")
+            criteria8_response = self._format_ai_response(criteria8_ai_result, "criteria8")
 
             return {
                 "status": "success",
@@ -73,6 +75,7 @@ class InitialReviewService:
                     "criteria2": criteria2_response,
                     "criteria4": criteria4_response,
                     "criteria6": criteria6_response,
+                    "criteria8": criteria8_response,
                     "raw_text": extracted_text[:200]
                 }
             }

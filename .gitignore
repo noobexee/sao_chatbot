@@ -14,3 +14,7 @@ Thumbs.db
 venv
 
 __pycache__
+
+criteria_testscripts
+
+evaluation_results
