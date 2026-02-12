@@ -85,35 +85,44 @@ class Chatbot:
         history_str = "\n".join([f"{msg.type}: {msg.content}" for msg in history_messages[-5:]])
 
         routing_prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a precision router for a Thai Legal RAG system.
-            Classify the user's intent into exactly one category.
+            ("system", """You are a precision router for the State Audit Office (สตง.) Thai Legal RAG.
+            Your job is to distinguish between asking ABOUT the law vs. asking HOW TO CONTACT the office.
 
-            ### PRIORITY RULES:
-            1. **Primary Focus:** Analyze the 'Current Query' as the absolute truth for the user's current intent.
-            2. **Secondary Context:** Use 'Conversation History' ONLY to understand pronouns (e.g., "it", "that file") or context if the current query is ambiguous.
-            3. **Override:** If the 'Current Query' represents a clear shift in topic (e.g., switching from asking about laws to saying "Hello"), classify based on the new query, ignoring the previous legal context.
+            ### CATEGORIES:
+            1. 'FAQ': 
+               - Focus: Logistics, Contact, Location, Phone numbers.
+               - Intent: The user wants to reach a human, find an office, or know opening hours.
+               - Example: "ติดต่อ สตง ยังไง", "ขอเบอร์โทรหน่อย", "สำนักงานเปิดกี่โมง"
+            
+            2. 'FILE_REQUEST':
+               - Focus: Downloading documents.
+               - Intent: Wants a PDF, Link, or Full Paper.
+               - Example: "ขอไฟล์ระเบียบ", "โหลด PDF ตรงไหน"
 
-            ### CATEGORY DEFINITIONS:
-            1. 'FILE_REQUEST':
-            - The user explicitly asks for a physical file, a download link, or the full document.
-            - Keywords (Thai): "ขอไฟล์" (request file), "ดาวน์โหลด" (download), "ฉบับเต็ม" (full version), "ขอ link", "PDF".
-            - Example: "ขอไฟล์ ระเบียบสำนักงานตรวจเงินแผ่นดินหน่อย"
+            3. 'LEGAL_RAG':
+               - Focus: Law substance, audit rules, "Is this legal?", "How to audit?".
+               - Intent: The user is asking for legal/procedural knowledge.
+               - Example: "การประเมินความเสี่ยงทำอย่างไร", "ผิดวินัยการเงินไหม"
 
-            2. 'LEGAL_RAG':
-            - The user asks about the *content* of the law, procedures, definitions, penalties, or "how-to".
-            - Keywords (Thai): "ทำอย่างไร" (how to), "คืออะไร" (what is), "ขั้นตอน" (procedure), "มีความผิดไหม" (is it illegal), "ประเมินความเสี่ยง" (risk assessment).
-            - Example: "การคัดเลือกเรื่องที่มาจากการประเมินความเสี่ยงต้องทำอย่างไร"
+            4. 'CHITCHAT':
+               - Focus: Greetings and thanks.
 
-            3. 'CHITCHAT':
-            - Greetings, pleasantries, or off-topic non-legal conversation.
-            - Example: "สวัสดี", "ขอบคุณครับ", "เก่งมาก"
+            ### CRITICAL LOGIC OVERRIDE:
+            - IF the query contains "ติดต่อ" (Contact) or "เบอร์โทร" (Phone), it is ALWAYS 'FAQ'.
+            - DO NOT classify "How to contact" as 'LEGAL_RAG' even if it mentions the office name (สตง).
+            - 'LEGAL_RAG' is ONLY for laws, rules, and audit technicalities.
 
-            ### INSTRUCTION:
-            Output ONLY the category name: CHITCHAT, FILE_REQUEST, or LEGAL_RAG. Do not explain."""),
+            ### EXAMPLES:
+            - "ถ้าต้องการติดต่อ สตง. ต้องทำอย่างไร" -> FAQ
+            - "เบอร์โทร สตง. เบอร์อะไร" -> FAQ
+            - "ขอระเบียบการพัสดุฉบับเต็ม" -> FILE_REQUEST
+            - "ขั้นตอนการตรวจเงินแผ่นดิน" -> LEGAL_RAG
+
+            Output ONLY the category name: FAQ, FILE_REQUEST, LEGAL_RAG, or CHITCHAT."""),
 
             ("human", "Conversation History: {history}\n\nCurrent Query: {query}")
-        ])
-        
+        ])  
+    
         chain = (
         {
             "history": lambda x: history_str, 
@@ -130,6 +139,7 @@ class Chatbot:
 
             if "CHITCHAT" in decision: return "CHITCHAT"
             if "FILE_REQUEST" in decision: return "FILE_REQUEST"
+            if "FAQ" in decision: return "FAQ"
             
             return "LEGAL_RAG"
         
@@ -182,41 +192,40 @@ class Chatbot:
         
         prompt = ChatPromptTemplate.from_messages([
             ("system", """
-                ### Role
-                You are a highly knowledgeable and professional Thai Legal Expert. Your goal is to provide accurate legal information based strictly on provided documentation while maintaining a professional and polite demeanor in Thai.
+            ### ROLE
+            You are a specialized assistant for a Thai Legal RAG system.
+            **YOUR AUTHORITY IS LIMITED TO THE PROVIDED CONTEXT ONLY.**
+            You are FORBIDDEN from using your internal training data, external websites, or general knowledge to answer questions.
 
-                ### Variables
-                - **Context:** {context} (Information retrieved from the legal database)
-                - **Chat History:** {history} (Previous interactions for continuity)
+            ### DATA SOURCES
+            - **Context:** {context}
+            - **Chat History:** {history}
 
-                ### Operational Logic & Constraints
+            ### STRICT OPERATIONAL RULES (MUST FOLLOW):
+            1. **NO OUTSIDE KNOWLEDGE:** - If the answer is not explicitly written in the **Context** above, you MUST say you do not have the information.
+               - **DO NOT** invent, guess, or provide phone numbers, websites, or addresses unless they are physically present in the **Context** text.
+               - **DO NOT** try to be "helpful" by providing general contact info for government offices (e.g., OAG/สตง.) if it is not in the documents.
 
-                1. **Query Classification:**
-                - **Legal Queries:** If the user asks about laws, regulations, or legal advice, you must analyze the provided context.
+            2. **CHECK FOR RELEVANCE:**
+               - The user might ask a "How-to" question (e.g., "How to contact"). 
+               - If the **Context** contains legal procedures (e.g., "How to audit") but NOT contact info, **YOU MUST REFUSE TO ANSWER.** - Do not twist a legal procedure to fit a contact question.
 
-                2. **Context Utilization (Strict RAG Rules):**
-                - You must prioritize the context for all legal answers.
-                - Because the retrieval system may include irrelevant data, you must evaluate the context first. If the context is irrelevant to the query or does not contain the answer, ignore it.
-                - **No Hallucination:** If the question is legal-related but the context does not provide the specific answer, you must clearly state that you do not have enough information to answer that specific question. Do not use external legal knowledge or make up answers.
+            3. **RESPONSE FORMAT:**
+               - Answer in **Professional Thai (ภาษาไทยระดับทางการ)**.
+               - Be direct and concise.
+               - Use **bold** for important legal terms or section numbers (e.g., **มาตรา 42**).
 
-                3. **Response Style & Language:**
-                - **Language:** Always respond in **Professional Thai (ภาษาไทยระดับทางการ/กึ่งทางการ)**.
-                - **Tone:** Authoritative yet helpful and polite.
-                - **Conciseness:** Be direct and concise. Do not repeat the question or provide redundant explanations. Provide the core answer immediately.
+            ### MANDATORY REFUSAL MESSAGE
+            If the **Context** does not contain the answer, or if the retrieved documents are irrelevant to the user's specific question, output EXACTLY this message:
+            "ขออภัยครับ เอกสารที่สืบค้นได้ไม่ครอบคลุมข้อมูลในส่วนนี้ (เช่น ข้อมูลติดต่อ หรือระเบียบที่ท่านถามถึง) ผมจึงไม่สามารถให้คำตอบที่ถูกต้องตามเอกสารอ้างอิงได้ครับ"
+            """),
+            
+            ("human", """
+            Context: {context}
+            User Query: {query}
+            """)
+        ])
 
-                4. **Interaction Handling:**
-                - Use the history to maintain context for follow-up questions (e.g., if the user asks "And what about the penalty for that?", refer to the previous topic in the history).
-
-                ### Formatting
-                - Use bullet points for lists of legal requirements or conditions.
-                - Use bold text for key legal terms or specific Section/Article numbers.
-                
-                ### Mandatory Refusal
-                If the query cannot be answered by the context, respond: "ขออภัยครับ ข้อมูลในเอกสารที่ได้รับมาไม่ครอบคลุมประเด็นนี้ ผมจึงไม่สามารถให้คำตอบที่ถูกต้องตามกฎหมายได้"
-                """),
-                ("human", "{query}")
-            ]
-        )
 
         chain = (
             {
@@ -275,7 +284,12 @@ class Chatbot:
         except Exception as e:
             print(f"Error parsing JSON: {e}")
             return "ขออภัยครับ เกิดข้อผิดพลาดในการค้นหาไฟล์", []    
-        
+
+    async def _handle_FAQ(self, query: str, history: list):
+
+        return "ขออภัยครับ ผมไม่มีข้อมูลในส่วนนี้ (ข้อมูลติดต่อหรือที่อยู่หน่วยงาน) ผมสามารถให้ข้อมูลได้เฉพาะเรื่องกฎหมายและระเบียบการตรวจสอบเท่านั้นครับ", []
+
+
     async def answer_question(self, user_id: int, session_id: str, query: str) -> RAGResponse: 
         history_messages = self._get_history_objects(user_id, session_id)
 
@@ -287,6 +301,9 @@ class Chatbot:
                 
             elif route == "FILE_REQUEST":
                 response_text, refs_data = await self._handle_file_request(query, history_messages)
+
+            elif route == "FAQ":
+                response_text, refs_data = await self._handle_FAQ(query, history_messages)
                 
             else:
                 response_text, refs_data = await self._handle_legal_rag(query, history_messages)

@@ -21,8 +21,8 @@ __pycache__/
 .env.*
 
 # --- Data & Databases ---
-/data/
-/vector_store/
+/data/*
+/storage/*
 *.sqlite
 *.sqlite3
 *.sqlite-journal
