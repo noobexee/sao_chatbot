@@ -37,12 +37,22 @@ interface criteria4Details {
   location: FieldData;
 }
 
-// ✅ Interface ใหม่สำหรับ Criteria 2 & 8 (Authority Check)
+// ✅ [UPDATED] Interface รองรับ Human-in-the-Loop
 interface AuthorityDetails {
-  result: string;    // "เป็น" หรือ "ไม่เป็น"
-  reason: string;    // คำอธิบาย
-  evidence?: string; // ข้อความจาก OCR (ถ้ามี)
-  organization?: string; // สำหรับ Criteria 8 (ชื่อองค์กร)
+  // Original AI Data
+  aiResult: string;      
+  aiReason: string;
+  aiOrganization?: string;
+
+  // Final Human Data
+  finalResult: string;   
+  finalReason: string;   
+  finalOrganization?: string; // สำหรับ Criteria 8
+
+  // Meta Data
+  evidence?: string; 
+  isVerified: boolean;   // มนุษย์กดยืนยันแล้วหรือยัง
+  isOverridden: boolean; // มีการเปลี่ยนผล Pass/Fail หรือไม่
 }
 
 interface InitialReviewCriteria {
@@ -60,7 +70,7 @@ interface InitialReviewCriteria {
     reason?: string;
     people?: Person[];
     details?: criteria4Details; 
-    authority?: AuthorityDetails; // ✅ เพิ่ม Field นี้สำหรับ Criteria 2 & 8
+    authority?: AuthorityDetails; // ✅ Uses updated interface
   };
 }
 
@@ -73,6 +83,17 @@ const initialCriterias: InitialReviewCriteria[] = [
   { id: 6, label: "6. รายละเอียดของผู้ร้องเรียน", type: "auto", status: "neutral", isProcessing: false },
   { id: 7, label: "7. ไม่เป็นเรื่องร้องเรียนที่อยู่ระหว่างการดำเนินการของหน่วยงานอื่น", type: "auto", status: "neutral" },
   { id: 8, label: "8. เป็นเรื่องร้องเรียนที่อยู่ในอำนาจหน้าที่ขององค์กรอิสระอื่น", type: "auto", status: "neutral" },
+];
+
+// List องค์กรอิสระสำหรับ Criteria 8 (Human Selectable)
+const INDEPENDENT_ORGS = [
+    "ไม่ระบุ / ไม่ทราบ",
+    "คณะกรรมการป้องกันและปราบปรามการทุจริตแห่งชาติ (ป.ป.ช.)",
+    "คณะกรรมการการเลือกตั้ง (กกต.)",
+    "ผู้ตรวจการแผ่นดิน",
+    "ศาลปกครอง",
+    "ศาลรัฐธรรมนูญ",
+    "คณะกรรมการสิทธิมนุษยชนแห่งชาติ (กสม.)"
 ];
 
 export default function InitialReviewProjectPage() {
@@ -91,8 +112,14 @@ export default function InitialReviewProjectPage() {
   const [criterias, setCriterias] = useState<InitialReviewCriteria[]>(initialCriterias);
   const [expandedCriteriaIds, setExpandedCriteriaIds] = useState<number[]>([]);
   const [isSaving, setIsSaving] = useState(false); 
+  
+  // Edit States for Step 4
   const [editingField, setEditingField] = useState<keyof criteria4Details | null>(null);
   const [tempEditValue, setTempEditValue] = useState("");
+
+  // Edit States for Authority (Step 2 & 8)
+  const [editingAuthorityReasonId, setEditingAuthorityReasonId] = useState<number | null>(null);
+  const [tempAuthorityReason, setTempAuthorityReason] = useState("");
 
   // --- State: View & Edit Mode ---
   const [viewMode, setViewMode] = useState<ViewMode>("pdf");
@@ -108,20 +135,12 @@ export default function InitialReviewProjectPage() {
   // --- 1. OCR Logic (Run Automatically) ---
   useEffect(() => {
     const runOCR = async () => {
-        // Validation
         if (!currentFile?.fileObj) return;
-        
-        // STOP if we already processed this specific file ID
-        // Assuming currentFile has a unique 'id' or we can use 'name' + 'size' as proxy
         const fileId = currentFile.id || currentFile.name; 
         if (processedFileIdRef.current === fileId) return;
-
-        // STOP if text already exists (redundant check but good safety)
         if (docText) return; 
 
-        // Mark as processing immediately
         processedFileIdRef.current = fileId;
-
         setIsOCRLoading(true);
         setOcrError(null);
         
@@ -135,13 +154,10 @@ export default function InitialReviewProjectPage() {
         } catch (err: any) {
             console.error("OCR Error:", err);
             setOcrError(err.message || "Failed to extract text");
-            // Reset ref on error so user can retry? 
-            // processedFileIdRef.current = null;
         } finally {
             setIsOCRLoading(false);
         }
     };
-
     runOCR();
   }, [currentFile]);
 
@@ -153,7 +169,6 @@ export default function InitialReviewProjectPage() {
     }
 
     setShowChecklist(true);
-    // Set processing state for all auto criteria (2, 4, 6, 8)
     setCriterias(prev => prev.map(c => 
         ([2, 4, 6, 8].includes(c.id)) ? { ...c, isProcessing: true } : c
     ));
@@ -165,24 +180,27 @@ export default function InitialReviewProjectPage() {
         const result = await analyzeDocument(fileToAnalyze);
 
         if (result.status === "success" || result.data) {
-            // Destructure all available results (including optional ones)
             const { criteria2, criteria4, criteria6, criteria8 } = result.data;
 
             setCriterias(prev => prev.map(c => {
-                // ✅ Criteria 2: อำนาจหน้าที่ สตง.
+                // ✅ Criteria 2: อำนาจหน้าที่ สตง. (HITL Init)
                 if (c.id === 2 && criteria2) {
                     return {
                         ...c,
                         isProcessing: false,
-                        status: criteria2.status,
+                        status: criteria2.status, // Initial status based on AI
                         ocrResult: {
                             status: criteria2.status,
                             title: criteria2.title,
                             reason: criteria2.reason,
                             authority: {
-                                result: criteria2.result, // "เป็น" หรือ "ไม่เป็น"
-                                reason: criteria2.reason,
-                                evidence: criteria2.evidence
+                                aiResult: criteria2.result,
+                                aiReason: criteria2.reason,
+                                finalResult: criteria2.result, // Default to AI
+                                finalReason: criteria2.reason, // Default to AI
+                                evidence: criteria2.evidence,
+                                isVerified: false,
+                                isOverridden: false
                             }
                         }
                     };
@@ -205,7 +223,7 @@ export default function InitialReviewProjectPage() {
                     return { ...c, isProcessing: false, status: criteria6.status, ocrResult: { status: criteria6.status, title: criteria6.title, reason: criteria6.reason, people: criteria6.people } };
                 }
 
-                // ✅ Criteria 8: อำนาจองค์กรอิสระอื่น
+                // ✅ Criteria 8: อำนาจองค์กรอิสระอื่น (HITL Init)
                 if (c.id === 8 && criteria8) {
                     return {
                         ...c,
@@ -216,10 +234,15 @@ export default function InitialReviewProjectPage() {
                             title: criteria8.title,
                             reason: criteria8.reason,
                             authority: {
-                                result: criteria8.result,
-                                reason: criteria8.reason,
+                                aiResult: criteria8.result,
+                                aiReason: criteria8.reason,
+                                aiOrganization: criteria8.organization,
+                                finalResult: criteria8.result, // Default to AI
+                                finalReason: criteria8.reason, // Default to AI
+                                finalOrganization: criteria8.organization || INDEPENDENT_ORGS[0],
                                 evidence: criteria8.evidence,
-                                organization: criteria8.organization
+                                isVerified: false,
+                                isOverridden: false
                             }
                         }
                     };
@@ -228,7 +251,6 @@ export default function InitialReviewProjectPage() {
                 return c;
             }));
             
-            // Expand relevant sections
             setExpandedCriteriaIds(prev => [...new Set([...prev, 2, 4, 6, 8])]);
         } else {
             throw new Error(result.message || "Unknown error");
@@ -247,14 +269,43 @@ export default function InitialReviewProjectPage() {
       return;
     }
 
+    // Check for unverified items
+    const unverified = criterias.filter(c => 
+        (c.id === 2 || c.id === 8) && c.ocrResult?.authority && !c.ocrResult.authority.isVerified
+    );
+
+    if (unverified.length > 0) {
+        const confirmSave = window.confirm(`Warning: Criteria ${unverified.map(c => c.id).join(", ")} have NOT been verified by a human. Save anyway?`);
+        if (!confirmSave) return;
+    }
+
     setIsSaving(true);
     try {
       const criteriasToSave = criterias.filter(s => s.ocrResult || s.status !== 'neutral');
       for (const criteria of criteriasToSave) {
           let resultData = criteria.ocrResult || {};
+          
+          // Use FINAL human data for saving
+          if ((criteria.id === 2 || criteria.id === 8) && criteria.ocrResult?.authority) {
+              const auth = criteria.ocrResult.authority;
+              resultData = {
+                  ...resultData,
+                  // Overwrite standard fields with Final Human decisions
+                  status: criteria.status,
+                  reason: auth.finalReason,
+                  authority: {
+                      ...auth,
+                      result: auth.finalResult,
+                      reason: auth.finalReason,
+                      organization: auth.finalOrganization
+                  }
+              };
+          }
+
           if(criteria.type === 'manual') {
              resultData = { ...resultData, manual_selection: criteria.selectedOption, status: criteria.status };
           }
+
           await saveAiResult({
               InitialReview_id: InitialReviewId,
               criteria_id: criteria.id,
@@ -275,13 +326,8 @@ export default function InitialReviewProjectPage() {
     setExpandedCriteriaIds(prev => prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]);
   };
 
-  const handleToggleAll = () => {
-    const allIds = criterias.map(s => s.id);
-    setExpandedCriteriaIds(expandedCriteriaIds.length === allIds.length ? [] : allIds);
-  };
-
   const handleOptionSelect = (criteriaId: number, optionLabel: string, resultStatus: "success" | "fail") => {
-    setCriterias(prevCriterias => prevCriterias.map(criteria => criteria.id === criteriaId ? { ...criteria, status: resultStatus as any, selectedOption: optionLabel } : criteria));
+    setCriterias(prev => prev.map(criteria => criteria.id === criteriaId ? { ...criteria, status: resultStatus as any, selectedOption: optionLabel } : criteria));
   };
 
   const handleFeedback = (criteriaId: number, type: FeedbackType) => {
@@ -297,7 +343,90 @@ export default function InitialReviewProjectPage() {
     }
   };
 
-  // --- Editable Logic for Step 4 (Simplified for brevity) ---
+  // --- HITL Handlers for Authority ---
+  const handleVerifyAuthority = (id: number) => {
+    setCriterias(prev => prev.map(c => {
+        if (c.id === id && c.ocrResult?.authority) {
+            return {
+                ...c,
+                ocrResult: {
+                    ...c.ocrResult,
+                    authority: { ...c.ocrResult.authority, isVerified: true }
+                }
+            };
+        }
+        return c;
+    }));
+  };
+
+  const handleAuthorityResultToggle = (id: number) => {
+    setCriterias(prev => prev.map(c => {
+        if (c.id === id && c.ocrResult?.authority) {
+            const currentRes = c.ocrResult.authority.finalResult;
+            const newRes = currentRes === "เป็น" ? "ไม่เป็น" : "เป็น";
+            const isOverridden = newRes !== c.ocrResult.authority.aiResult;
+            
+            // Logic to determine main status based on ID
+            let newStatus: criteriaStatus = 'pending';
+            if (id === 2) newStatus = newRes === "เป็น" ? 'success' : 'fail';
+            if (id === 8) newStatus = newRes === "ไม่เป็น" ? 'success' : 'fail'; // Criteria 8: ไม่เป็น = Good
+
+            return {
+                ...c,
+                status: newStatus,
+                ocrResult: {
+                    ...c.ocrResult,
+                    status: newStatus as any, // Update internal status too
+                    authority: { 
+                        ...c.ocrResult.authority, 
+                        finalResult: newRes, 
+                        isOverridden: isOverridden,
+                        isVerified: false // Reset verification on change
+                    }
+                }
+            };
+        }
+        return c;
+    }));
+  };
+
+  const handleAuthorityOrgChange = (id: number, newOrg: string) => {
+    setCriterias(prev => prev.map(c => {
+        if (c.id === id && c.ocrResult?.authority) {
+            return {
+                ...c,
+                ocrResult: {
+                    ...c.ocrResult,
+                    authority: { ...c.ocrResult.authority, finalOrganization: newOrg, isVerified: false }
+                }
+            };
+        }
+        return c;
+    }));
+  };
+
+  const startEditingAuthorityReason = (id: number, currentReason: string) => {
+      setEditingAuthorityReasonId(id);
+      setTempAuthorityReason(currentReason);
+  };
+
+  const saveAuthorityReason = (id: number) => {
+    setCriterias(prev => prev.map(c => {
+        if (c.id === id && c.ocrResult?.authority) {
+            return {
+                ...c,
+                ocrResult: {
+                    ...c.ocrResult,
+                    authority: { ...c.ocrResult.authority, finalReason: tempAuthorityReason, isVerified: false }
+                }
+            };
+        }
+        return c;
+    }));
+    setEditingAuthorityReasonId(null);
+  };
+
+  // --- Editable Logic for Step 4 ---
   const startEditingDetail = (key: keyof criteria4Details, field: FieldData) => { setEditingField(key); setTempEditValue(field.value || ""); };
   const cancelEditDetail = () => { setEditingField(null); setTempEditValue(""); };
   const saveDetailEdit = (key: keyof criteria4Details) => { 
@@ -312,48 +441,115 @@ export default function InitialReviewProjectPage() {
 
   // --- Render Functions ---
 
-  // ✅ 1. Render Authority Check (สำหรับ Criteria 2 & 8)
-  const renderAuthorityResult = (criteriaId: number, status: criteriaStatus, authority?: AuthorityDetails) => {
-    if (!authority) return null;
-
-    // ใช้ status จาก API โดยตรงเพื่อความถูกต้อง (Success = สีเขียว, Fail = สีแดง)
+  // ✅ [NEW] Render Authority with Human-in-the-Loop Controls
+  const renderAuthorityHITL = (criteriaId: number, status: criteriaStatus, authority: AuthorityDetails) => {
     const isSuccess = status === 'success';
-    
-    // ใช้ existing getStatusClasses เพื่อความคุมโทนสี
     const statusClass = getStatusClasses(status);
+    
+    let statusLabel = isSuccess ? "Pass" : "Fail";
+    if (criteriaId === 2) statusLabel = isSuccess ? "อยู่ในอำนาจ สตง." : "ไม่อยู่ในอำนาจ";
+    if (criteriaId === 8) statusLabel = isSuccess ? "ไม่อยู่ในอำนาจอิสระอื่น" : "อยู่ในอำนาจอิสระอื่น";
+
+    const isEditingReason = editingAuthorityReasonId === criteriaId;
 
     return (
-        <div className="space-y-3 mt-1">
-            {/* บรรทัดที่ 1: ผลลัพธ์ (เป็น/ไม่เป็น) พร้อมเครื่องหมาย */}
-            <div className={`p-3 rounded border flex items-center gap-3 ${statusClass}`}>
-                <div className={`w-20 h-6 rounded-full flex items-center justify-center shrink-0 ${isSuccess ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'}`}>
-                    {isSuccess ? "✓ Pass" : "✕ Fail"}
+        <div className="space-y-4 mt-1">
+            {/* Header: AI Status vs Verification */}
+            <div className="flex items-center justify-between text-xs mb-1">
+                 <div className="flex items-center gap-1 text-gray-500">
+                    <span className="font-semibold">🤖 AI Suggestion:</span>
+                    <span>{authority.aiResult}</span>
+                 </div>
+                 <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full border ${authority.isVerified ? 'bg-green-100 text-green-700 border-green-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
+                    {authority.isVerified ? <span>✓ Verified by Human</span> : <span>⚠️ Pending Review</span>}
+                 </div>
+            </div>
+
+            {/* 1. Toggle Switch for Result */}
+            <div className={`p-4 rounded-lg border-2 flex flex-col gap-3 transition-colors ${authority.isOverridden ? 'border-orange-200 bg-orange-50' : (isSuccess ? 'border-green-100 bg-green-50' : 'border-red-100 bg-red-50')}`}>
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                         {/* Toggle Button */}
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); handleAuthorityResultToggle(criteriaId); }}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${isSuccess ? 'bg-green-500' : 'bg-red-500'}`}
+                        >
+                            <span className={`${isSuccess ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`} />
+                        </button>
+                        <div>
+                            <div className="text-sm font-bold text-gray-800">{authority.finalResult}</div>
+                            <div className="text-xs text-gray-500">{statusLabel}</div>
+                        </div>
+                    </div>
+                    {authority.isOverridden && <span className="text-xs font-bold text-orange-600 bg-white px-2 py-1 rounded border border-orange-200">Manual Override</span>}
                 </div>
-                <div className="font-bold text-lg">
-                    {authority.result}
-                    {criteriaId === 8 && authority.organization && authority.result === "เป็น" && (
-                        <span className="ml-2 text-sm font-normal text-gray-600">({authority.organization})</span>
+            </div>
+
+            {/* 2. Organization Picker (Criteria 8 Only & Fail Status) */}
+            {criteriaId === 8 && authority.finalResult === "เป็น" && (
+                <div className="bg-white p-3 rounded border border-gray-200 shadow-sm">
+                    <label className="block text-xs font-bold text-gray-600 mb-1">องค์กรที่รับผิดชอบ (AI: {authority.aiOrganization || "-"})</label>
+                    <select 
+                        className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        value={authority.finalOrganization || ""}
+                        onChange={(e) => handleAuthorityOrgChange(criteriaId, e.target.value)}
+                    >
+                        {INDEPENDENT_ORGS.map(org => (
+                            <option key={org} value={org}>{org}</option>
+                        ))}
+                    </select>
+                </div>
+            )}
+
+            {/* 3. Editable Reasoning */}
+            <div className="bg-white p-3 rounded border border-gray-200 shadow-sm group">
+                <div className="flex items-center justify-between mb-2">
+                    <span className="font-bold text-gray-900 text-sm">เหตุผลประกอบ:</span>
+                    {!isEditingReason && (
+                        <button onClick={() => startEditingAuthorityReason(criteriaId, authority.finalReason)} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
+                            ✎ แก้ไข
+                        </button>
                     )}
                 </div>
+                
+                {isEditingReason ? (
+                    <div className="flex flex-col gap-2">
+                        <textarea 
+                            className="w-full text-sm p-2 border border-blue-300 rounded focus:ring-1 focus:ring-blue-500 min-h-[80px]"
+                            value={tempAuthorityReason}
+                            onChange={(e) => setTempAuthorityReason(e.target.value)}
+                            autoFocus
+                        />
+                        <div className="flex justify-end gap-2">
+                            <button onClick={() => setEditingAuthorityReasonId(null)} className="px-3 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+                            <button onClick={() => saveAuthorityReason(criteriaId)} className="px-3 py-1 text-xs text-white bg-blue-600 hover:bg-blue-700 rounded">Save</button>
+                        </div>
+                    </div>
+                ) : (
+                    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{authority.finalReason}</p>
+                )}
             </div>
 
-            {/* บรรทัดที่ 2: คำอธิบายเหตุผล */}
-            <div className="bg-gray-50 p-3 rounded border border-gray-200 text-sm text-gray-700 leading-relaxed">
-                <span className="font-bold text-gray-900 block mb-1">เหตุผล:</span>
-                {authority.reason}
-            </div>
-
-            {/* บรรทัดที่ 3: อ้างอิงจาก OCR (ถ้ามี) */}
+            {/* 4. Evidence (Read Only) */}
             {authority.evidence && (
                 <div className="text-xs text-gray-500 italic pl-3 border-l-4 border-gray-300">
-                    "{authority.evidence}"
+                    หลักฐานจากเอกสาร: "{authority.evidence}"
                 </div>
+            )}
+
+            {/* 5. Verification Action */}
+            {!authority.isVerified && (
+                <button 
+                    onClick={() => handleVerifyAuthority(criteriaId)}
+                    className="w-full mt-2 py-2 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium transition-colors shadow-sm"
+                >
+                    <span>✓ ยืนยันผลการตรวจสอบ</span>
+                </button>
             )}
         </div>
     );
   };
 
-  // 2. Render Step 4 Items (Editable)
   const renderCriteria4Item = (fieldKey: keyof criteria4Details, label: string, field: FieldData | undefined, required: boolean) => {
     if (!field) return null;
     const isEditing = editingField === fieldKey;
@@ -391,7 +587,7 @@ export default function InitialReviewProjectPage() {
 
   return (
     <div className="flex h-full w-full flex-row overflow-hidden bg-[#f9fafb]">
-      {/* LEFT PANEL: View/Edit Doc (Same as before) */}
+      {/* LEFT PANEL: View/Edit Doc */}
       <div className="flex-1 overflow-y-auto p-4 md:p-8 flex justify-center bg-[#f0f2f5]">
         <div className="flex flex-col h-full w-full max-w-[800px] min-h-[1000px] bg-white shadow-sm border border-gray-200 relative">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white z-10 sticky top-0">
@@ -453,11 +649,11 @@ export default function InitialReviewProjectPage() {
                              {criteria.isProcessing && <span className="inline-flex items-center gap-1 mt-1 text-xs text-blue-600 font-semibold animate-pulse">Processing...</span>}
                              {!expandedCriteriaIds.includes(criteria.id) && !criteria.isProcessing && criteria.status !== 'neutral' && (
                                 <div className={`mt-1 text-xs font-bold ${criteria.status === 'success' ? 'text-green-700' : 'text-red-700'}`}>
-                                    {/* Show summary result when collapsed */}
+                                    {/* Show brief result when collapsed */}
                                     {criteria.id === 2 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
                                     {criteria.id === 4 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
                                     {criteria.id === 6 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
-                                    {criteria.id === 8 && criteria.ocrResult?.authority && <span>Result: {criteria.ocrResult.authority.result}</span>}
+                                    {criteria.id === 8 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
                                 </div>
                              )}
                           </div>
@@ -467,9 +663,9 @@ export default function InitialReviewProjectPage() {
                         {expandedCriteriaIds.includes(criteria.id) && (
                            <div className="mt-2 ml-4 p-4 border-l-2 border-gray-200 bg-gray-50 rounded-r-md">
                               
-                              {/* ✅ Criteria 2 & 8: Authority Check UI */}
+                              {/* ✅ Criteria 2 & 8: Authority Check UI (Improved) */}
                               {(criteria.id === 2 || criteria.id === 8) && criteria.ocrResult?.authority && (
-                                  renderAuthorityResult(criteria.id, criteria.status, criteria.ocrResult.authority)
+                                  renderAuthorityHITL(criteria.id, criteria.status, criteria.ocrResult.authority)
                               )}
 
                               {/* Manual Step UI */}
@@ -513,8 +709,8 @@ export default function InitialReviewProjectPage() {
                                 </div>
                               )}
 
-                              {/* Feedback */}
-                              {criteria.ocrResult && (
+                              {/* General Feedback (Optional for other criteria) */}
+                              {criteria.ocrResult && !(criteria.id === 2 || criteria.id === 8) && (
                                 <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
                                     <span className="text-xs text-gray-400">Is this result correct?</span>
                                     <button onClick={(e) => { e.stopPropagation(); handleFeedback(criteria.id, "up"); }} className={`p-1.5 rounded transition-colors ${criteria.feedback === "up" ? "bg-green-50 text-green-600 ring-1 ring-green-200" : "text-gray-400 hover:text-green-600 hover:bg-gray-50"}`} title="Correct">
@@ -530,7 +726,8 @@ export default function InitialReviewProjectPage() {
                     </div>
                     ))}
                 </div>
-                {/* Save Button Area (Same as before) */}
+                
+                {/* Save Button Area */}
                 <div className="pt-4 mt-auto border-t border-gray-100 flex flex-col gap-3">
                     <button onClick={handleSaveToDatabase} disabled={isSaving} className="w-full px-6 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all text-sm font-medium shadow-sm">{isSaving ? "Saving..." : "Save Results"}</button>
                 </div>
