@@ -77,11 +77,11 @@ interface InitialReviewCriteria {
 const initialCriterias: InitialReviewCriteria[] = [
   { id: 1, label: "1. เป็นหน่วยรับตรวจที่อยู่ในสำนักตรวจสอบ", type: "auto", status: "neutral" },
   { id: 2, label: "2. เป็นเรื่องที่อยู่ในหน้าที่ของผู้ว่าการตรวจเงินแผ่นดิน", type: "auto", status: "neutral" },
-  { id: 3, label: "3. เป็นเรื่องที่เกิดขึ้นมาไม่เกิน 5 ปี...", type: "manual", status: "pending", options: [{ label: "เกิน", value: "fail" }, { label: "ไม่เกิน", value: "success" }, { label: "ไม่ระบุ", value: "fail" }], selectedOption: null },
+  { id: 3, label: "3. เป็นเรื่องที่เกิดขึ้นมาแล้วไม่เกิน 5 ปี นับแต่วันที่เกิดเหตุ", type: "manual", status: "pending", options: [{ label: "เกิน", value: "fail" }, { label: "ไม่เกิน", value: "success" }, { label: "ไม่ระบุ", value: "fail" }], selectedOption: null },
   { id: 4, label: "4. เป็นเรื่องที่ระบุรายละเอียดเพียงพอที่จะตรวจสอบได้", type: "auto", status: "neutral", isProcessing: false },
-  { id: 5, label: "5. เป็นเรื่องที่ผู้ว่าการ...", type: "manual", status: "pending", options: [{ label: "เคย", value: "fail" }, { label: "ไม่เคย", value: "success" }], selectedOption: null },
+  { id: 5, label: "5. เป็นเรื่องที่ ผตง. หรือผู้ที่ ผตง. มอบหมาย แจ้งผลการตรวจสอบ", type: "manual", status: "pending", options: [{ label: "เคยแจ้ง", value: "fail" }, { label: "ไม่เคยแจ้ง", value: "success" }], selectedOption: null },
   { id: 6, label: "6. รายละเอียดของผู้ร้องเรียน", type: "auto", status: "neutral", isProcessing: false },
-  { id: 7, label: "7. ไม่เป็นเรื่องร้องเรียนที่อยู่ระหว่างการดำเนินการของหน่วยงานอื่น", type: "auto", status: "neutral" },
+  { id: 7, label: "7. ไม่เป็นเรื่องร้องเรียนที่อยู่ระหว่างการดำเนินการของหน่วยงานอื่น", type: "manual", status: "pending", options: [{ label: "เป็น", value: "fail" }, { label: "ไม่เป็น", value: "success" }], selectedOption: null },
   { id: 8, label: "8. เป็นเรื่องร้องเรียนที่อยู่ในอำนาจหน้าที่ขององค์กรอิสระอื่น", type: "auto", status: "neutral" },
 ];
 
@@ -324,6 +324,14 @@ export default function InitialReviewProjectPage() {
   // --- Helpers & UI ---
   const toggleExpand = (id: number) => {
     setExpandedCriteriaIds(prev => prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]);
+  };
+
+  const toggleExpandAll = () => {
+    if (expandedCriteriaIds.length === criterias.length) {
+      setExpandedCriteriaIds([]); // ย่อทั้งหมด
+    } else {
+      setExpandedCriteriaIds(criterias.map(c => c.id)); // ขยายทั้งหมด
+    }
   };
 
   const handleOptionSelect = (criteriaId: number, optionLabel: string, resultStatus: "success" | "fail") => {
@@ -647,13 +655,17 @@ export default function InitialReviewProjectPage() {
                           <div className="flex-1 pr-4">
                              <div className="flex items-center gap-2"><span className="text-sm font-medium">{criteria.label}</span></div>
                              {criteria.isProcessing && <span className="inline-flex items-center gap-1 mt-1 text-xs text-blue-600 font-semibold animate-pulse">Processing...</span>}
+                             
+                             {/* โชว์ Result สั้นๆ เมื่อหน้าต่างพับอยู่ (รวมของ Manual ด้วย) */}
                              {!expandedCriteriaIds.includes(criteria.id) && !criteria.isProcessing && criteria.status !== 'neutral' && (
                                 <div className={`mt-1 text-xs font-bold ${criteria.status === 'success' ? 'text-green-700' : 'text-red-700'}`}>
-                                    {/* Show brief result when collapsed */}
-                                    {criteria.id === 2 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
-                                    {criteria.id === 4 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
-                                    {criteria.id === 6 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
-                                    {criteria.id === 8 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
+                                    {criteria.type === "auto" && criteria.id === 2 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
+                                    {criteria.type === "auto" && criteria.id === 4 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
+                                    {criteria.type === "auto" && criteria.id === 6 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
+                                    {criteria.type === "auto" && criteria.id === 8 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
+                                    
+                                    {/* ของ Manual 3, 5, 7 */}
+                                    {criteria.type === "manual" && criteria.selectedOption && `Result: ${criteria.selectedOption}`}
                                 </div>
                              )}
                           </div>
@@ -668,13 +680,13 @@ export default function InitialReviewProjectPage() {
                                   renderAuthorityHITL(criteria.id, criteria.status, criteria.ocrResult.authority)
                               )}
 
-                              {/* Manual Step UI */}
+                              {/* Manual Step UI (ข้อ 3, 5, 7) */}
                               {criteria.type === "manual" && criteria.options && (
                                  <div className="space-y-2">
                                     <p className="text-xs font-bold text-gray-500 mb-2 uppercase">Manual Verification</p>
                                     {criteria.options.map((option) => (
                                       <label key={option.label} className="flex items-center gap-3 cursor-pointer group p-2 rounded hover:bg-white hover:shadow-sm">
-                                        <input type="radio" name={`criteria-${criteria.id}`} className="h-4 w-4 text-[#a83b3b]" checked={criteria.selectedOption === option.label} onChange={() => handleOptionSelect(criteria.id, option.label, option.value)} />
+                                        <input type="radio" name={`criteria-${criteria.id}`} className="h-4 w-4 text-[#a83b3b]" checked={criteria.selectedOption === option.label} onChange={() => handleOptionSelect(criteria.id, option.label, option.value as "success"|"fail")} />
                                         <span className="text-sm">{option.label}</span>
                                       </label>
                                     ))}
@@ -726,9 +738,15 @@ export default function InitialReviewProjectPage() {
                     </div>
                     ))}
                 </div>
-                
+
                 {/* Save Button Area */}
                 <div className="pt-4 mt-auto border-t border-gray-100 flex flex-col gap-3">
+                    <button
+                        onClick={toggleExpandAll}
+                        className="w-full px-6 py-2 rounded-lg border border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100 transition-all text-sm font-medium shadow-sm"
+                    >
+                        {expandedCriteriaIds.length === criterias.length ? "ย่อ Criteria ทั้งหมด" : "ขยาย Criteria ทั้งหมด"}
+                    </button>
                     <button onClick={handleSaveToDatabase} disabled={isSaving} className="w-full px-6 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all text-sm font-medium shadow-sm">{isSaving ? "Saving..." : "Save Results"}</button>
                 </div>
             </div>
