@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     restart: always
     volumes:
-      - ./apps/sao_chatbot_backend/storage/faiss_index:/app/storage/faiss_index
+      - ./apps/sao_chatbot_backend/storage:/app/storage
     ports:
       - "${BACKEND_PORT}:${BACKEND_PORT}" 
     env_file:
