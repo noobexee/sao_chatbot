@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useParams } from "next/navigation";
 import { useInitialReview } from "../InitialReview-context";
 
@@ -96,7 +96,7 @@ const INDEPENDENT_ORGS = [
     "คณะกรรมการสิทธิมนุษยชนแห่งชาติ (กสม.)"
 ];
 
-export default function InitialReviewProjectPage() {
+function InitialReviewContent() {
   const params = useParams(); 
   const searchParams = useSearchParams();
   const { currentFile } = useInitialReview();
@@ -753,5 +753,17 @@ export default function InitialReviewProjectPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function InitialReviewProjectPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen w-full items-center justify-center text-gray-500 font-medium">
+        กำลังโหลดข้อมูล... (Loading...)
+      </div>
+    }>
+      <InitialReviewContent />
+    </Suspense>
   );
 }
