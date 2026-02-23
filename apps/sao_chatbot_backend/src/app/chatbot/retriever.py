@@ -90,6 +90,56 @@ class Retriever:
             
         return sorted(candidates, key=lambda x: x.get("hybrid_score", 0), reverse=True)
     
+    async def _rewrite_query_with_history(self, query: str, history: List[Dict[str, str]]) -> str:
+        """
+        Rewrites the user query to be self-contained, specifically optimized 
+        for Thai legal retrieval (preserving IDs, Versions, and Years).
+        """
+        if not history:
+            return query
+
+        recent_history = history[-4:] 
+        context_str = ""
+        for msg in recent_history:
+            if hasattr(msg, 'content'): 
+                role = "User" if msg.type == "human" else "Assistant"
+                content = msg.content
+            elif isinstance(msg, dict):
+                role = "User" if msg.get('role') == 'user' else "Assistant"
+                content = msg.get('content', '')
+            else:
+                continue
+        context_str += f"{role}: {content}\n"
+
+        prompt = f"""
+        You are a Thai Legal Search Assistant. Your task is to rewrite the "Follow-up Query" 
+        into a standalone Thai search query that is descriptive and includes all relevant 
+        entities from the Chat History.
+
+        RULES:
+        1. Preserve Law Names: If a law was mentioned (e.g., "ระเบียบการจัดซื้อ"), include it.
+        2. Preserve Identifiers: Keep version numbers (ฉบับที่...), years (พ.ศ....), and sections (ข้อ/มาตรา...).
+        3. De-reference Pronouns: Change words like "อันนี้", "อันที่สอง", "ข้อนี้" into the actual names.
+        4. Keep it Concise: Return ONLY the rewritten Thai query string.
+
+        Chat History:
+        {context_str}
+
+        Follow-up Query: {query}
+        Standalone Thai Query:"""
+
+        try:
+            response = await self.llm.ainvoke(prompt)
+            rewritten = response.content.strip() if hasattr(response, 'content') else str(response)
+            
+            # Clean up common LLM artifacts
+            rewritten = rewritten.replace('"', '').replace("Query:", "").strip()
+            
+            return rewritten if rewritten else query
+        except Exception as e:
+            print(f"Query rewriting error: {e}")
+            return query   
+        
     async def extract_keywords(self, query_text: str) -> List[str]:
         """Uses LLM to extract keywords for BM25."""
         prompt = f"""
@@ -198,12 +248,9 @@ class Retriever:
         return [{"idx": int(i), "rank": r} for r, i in enumerate(top_idx) if scores[i] > 0]
 
     async def hybrid_search_regulation(self, query: str, k: int = 5, search_date: str = None):
-        """Orchestrates hybrid search specifically for Regulations."""
         keywords = await self.extract_keywords(query)
-        
         vec_res = self.vector_search_regulation(query, k)
         key_res = self.keyword_search_regulation(keywords, k)
-        
         candidates = self._run_rrf_fusion(vec_res, key_res, self.reg_metadata, k)
         return self._filter_date(candidates, k, search_date)
 
@@ -223,21 +270,14 @@ class Retriever:
         return [{"idx": int(i), "rank": r} for r, i in enumerate(top_idx) if scores[i] > 0]
 
     async def hybrid_search_other(self, query: str, k: int = 5, search_date: str = None):
-        """Orchestrates hybrid search specifically for Guidelines/Orders."""
         keywords = await self.extract_keywords(query)
-        
         vec_res = self.vector_search_other(query, k)
         key_res = self.keyword_search_other(keywords, k)
-        
         candidates = self._run_rrf_fusion(vec_res, key_res, self.other_metadata, k)
         return self._filter_date(candidates, k, search_date)
 
     def get_related_document_titles(self, reg_doc: Dict) -> List[str]:
-        if not self.master_map:
-            return []
-
-        # FIND THE LAW (Fuzzy Match)
-        # We want "ระเบียบ...ตรวจสอบการปฏิบัติตามกฎหมาย" regardless of year/version
+        if not self.master_map: return []
         full_law_name = reg_doc.get("law_name", "")
         core_law = re.sub(r'\(ฉบับที่.*?\)|พ\.ศ\..*$', '', full_law_name).strip()
         norm_core_law = self.super_normalize(core_law)
@@ -248,14 +288,10 @@ class Retriever:
                 law_mapping = clauses
                 break
         
-        if not law_mapping:
-            return []
+        if not law_mapping: return []
 
-        # Extract base number from ID: "ข้อ ๒๖_p3" -> 26
         reg_id_digits = re.findall(r'[๐-๙0-9]+', normalize_regulation_id(reg_doc.get("id", "")))
         base_num = thai_to_arabic(reg_id_digits[0]) if reg_id_digits else ""
-        
-        # Extract sub-clause from text: "(๔)" -> 4
         text_content = reg_doc.get("text", "")
         sub_clause_match = re.search(r'^\s*\(([๐-๙0-9]+)\)', text_content)
         sub_num = thai_to_arabic(sub_clause_match.group(1)) if sub_clause_match else None
@@ -263,78 +299,29 @@ class Retriever:
         all_titles = []
         for map_key, titles in law_mapping.items():
             map_key_arabic = thai_to_arabic(map_key)
-            
             if sub_num:
                 if base_num in map_key_arabic and f"({sub_num})" in map_key_arabic:
                     all_titles.extend(titles)
-            
             else:
                 if re.search(fr'\b{base_num}\b', map_key_arabic):
                     all_titles.extend(titles)
-
         return list(set(all_titles))
     
-    async def retrieve(self, user_query: str, k: int = 3, history: list =[], search_date: str = None):
-        reg_results = await self.hybrid_search_regulation(user_query, k, search_date)
-        keywords = await self.extract_keywords(user_query)
-
-        for reg in reg_results:
-            allowed_titles = self.get_related_document_titles(reg)
-            
-            if not allowed_titles:
-                reg["related_documents"] = []
-                continue
-
-            normalized_allowed = [self.super_normalize(t) for t in allowed_titles]
-
-            vec_res = self.vector_search_other(user_query, k=20)
-            key_res = self.keyword_search_other(keywords, k=20)
-            candidates = self._run_rrf_fusion(vec_res, key_res, self.other_metadata, k=20)
-
-            filtered_related = []
-            seen_chunks = set()
-            
-            for cand in candidates:
-                raw_cand_name = cand.get("law_name", "")
-                norm_cand_name = self.super_normalize(raw_cand_name)
-                
-                is_match = False
-                for norm_title in normalized_allowed:
-                    if norm_title in norm_cand_name or norm_cand_name in norm_title:
-                        is_match = True
-                        break
-                unique_key = f"{cand.get('law_name')}|{cand.get('id')}"
-                if is_match and unique_key not in seen_chunks:
-                    filtered_related.append(cand)
-                    seen_chunks.add(cand.get("id"))
-            
-            active_related = self._filter_date(filtered_related, k=k, search_date=search_date)
-            reg["related_documents"] = active_related
-
-        return reg_results
-
-    async def _retrieve_other_by_type(self, query: str, target_doc_type: str, k: int = 3, search_date: str = None):
-        keywords = await self.extract_keywords(query)
+    async def _retrieve_other_by_type(self, query: str, target_doc_type: str, k: int = 3, search_date: str = None, history: list = []):
+        effective_query = await self._rewrite_query_with_history(query, history)
+        keywords = await self.extract_keywords(effective_query)
         
         fetch_k = k * 5 
-        vec_res = self.vector_search_other(query, fetch_k)
+        vec_res = self.vector_search_other(effective_query, fetch_k)
         key_res = self.keyword_search_other(keywords, fetch_k)
         
-        # Run Fusion
         candidates = self._run_rrf_fusion(vec_res, key_res, self.other_metadata, fetch_k)
-        
-        # APPLY TITLE BOOSTING HERE
         boosted_candidates = self._boost_by_title(candidates, keywords)
         
         filtered_by_type = []
         seen_chunks = set()
-        
         for cand in boosted_candidates:
-            doc_type = cand.get("doc_type", "")
-            
-            if target_doc_type not in doc_type:
-                continue
-                
+            if target_doc_type not in cand.get("doc_type", ""): continue
             unique_key = f"{cand.get('law_name')}|{cand.get('id')}"
             if unique_key not in seen_chunks:
                 filtered_by_type.append(cand)
@@ -342,128 +329,82 @@ class Retriever:
                 
         return self._filter_date(filtered_by_type, k=k, search_date=search_date)
 
-    async def retrieve_order(self, user_query: str, k: int = 3, history: list =[],search_date: str = None):
-        """Retrieves ONLY Orders (คำสั่ง)"""
-        return await self._retrieve_other_by_type(user_query, "คำสั่ง", k, search_date)
+    async def retrieve_order(self, user_query: str, k: int = 3, history: list = [], search_date: str = None):
+        return await self._retrieve_other_by_type(user_query, "คำสั่ง", k, search_date, history)
 
-    async def retrieve_guideline(self, user_query: str, k: int = 3, history: list =[], search_date: str = None):
-        """Retrieves ONLY Guidelines (แนวทาง)"""
-        return await self._retrieve_other_by_type(user_query, "แนวทาง", k, search_date)
+    async def retrieve_guideline(self, user_query: str, k: int = 3, history: list = [], search_date: str = None):
+        return await self._retrieve_other_by_type(user_query, "แนวทาง", k, search_date, history)
 
-    async def retrieve_standard(self,user_query: str, k: int = 3, history: list =[], search_date: str = None):
-        """Retrieves ONLY Standards (หลักเกณฑ์)"""
-        return await self._retrieve_other_by_type(user_query, "หลักเกณฑ์", k, search_date)
+    async def retrieve_standard(self, user_query: str, k: int = 3, history: list = [], search_date: str = None):
+        return await self._retrieve_other_by_type(user_query, "หลักเกณฑ์", k, search_date, history)
     
-    async def retrieve_regulation(self, user_query: str, k: int = 3, history: list =[], search_date: str = None):
-        reg_results = await self.hybrid_search_regulation(user_query, k, search_date)
-        keywords = await self.extract_keywords(user_query)
+    async def retrieve_regulation(self, user_query: str, k: int = 3, history: list = [], search_date: str = None):
+        effective_query = await self._rewrite_query_with_history(user_query, history)
+        reg_results = await self.hybrid_search_regulation(effective_query, k, search_date)
+        keywords = await self.extract_keywords(effective_query)
 
         for reg in reg_results:
             allowed_titles = self.get_related_document_titles(reg)
-            
             if not allowed_titles:
                 reg["related_documents"] = []
                 continue
 
             normalized_allowed = [self.super_normalize(t) for t in allowed_titles]
-
-            vec_res = self.vector_search_other(user_query, k=20)
+            vec_res = self.vector_search_other(effective_query, k=20)
             key_res = self.keyword_search_other(keywords, k=20)
             candidates = self._run_rrf_fusion(vec_res, key_res, self.other_metadata, k=20)
 
             filtered_related = []
             seen_chunks = set()
-            
             for cand in candidates:
-                raw_cand_name = cand.get("law_name", "")
-                norm_cand_name = self.super_normalize(raw_cand_name)
-                
-                is_match = False
-                for norm_title in normalized_allowed:
-                    if norm_title in norm_cand_name or norm_cand_name in norm_title:
-                        is_match = True
-                        break
+                norm_cand_name = self.super_normalize(cand.get("law_name", ""))
+                is_match = any(nt in norm_cand_name or norm_cand_name in nt for nt in normalized_allowed)
                 unique_key = f"{cand.get('law_name')}|{cand.get('id')}"
                 if is_match and unique_key not in seen_chunks:
                     filtered_related.append(cand)
-                    seen_chunks.add(cand.get("id"))
+                    seen_chunks.add(unique_key)
             
-            active_related = self._filter_date(filtered_related, k=k, search_date=search_date)
-            reg["related_documents"] = active_related
-
+            reg["related_documents"] = self._filter_date(filtered_related, k=k, search_date=search_date)
         return reg_results
 
-    async def retrieve_general(self, query: str, k: int = 3, search_date: str = None):
-        """
-        Searches across ALL databases (Regulations, Orders, Guidelines, Standards).
-        Combines and ranks them with Legal Hierarchy Weighting.
-        """
-        # 1. Fetch from Regulations
-        reg_candidates = await self.hybrid_search_regulation(query, k=k*2, search_date=search_date)
+    async def retrieve_general(self, query: str, k: int = 3, history: list = [], search_date: str = None):
+        effective_query = await self._rewrite_query_with_history(query, history)
+        reg_candidates = await self.hybrid_search_regulation(effective_query, k=k*2, search_date=search_date)
+        other_candidates = await self.hybrid_search_other(effective_query, k=k*2, search_date=search_date)
         
-        # 2. Fetch from Others 
-        other_candidates = await self.hybrid_search_other(query, k=k*2, search_date=search_date)
-        
-        # 3. Combine lists
         all_candidates = reg_candidates + other_candidates
         
-        # ==========================================
-        # NEW: LEGAL HIERARCHY BOOSTING
-        # ==========================================
         for cand in all_candidates:
-            law_name = cand.get("law_name", "")
-            doc_type = cand.get("doc_type", "")
+            law_name, doc_type = cand.get("law_name", ""), cand.get("doc_type", "")
             score = cand.get("hybrid_score", 0)
-            
-            # Apply score multipliers based on legal hierarchy
-            if "ระเบียบ" in doc_type or "ระเบียบ" in law_name:
-                # Give Regulations a 30% boost so they dominate the top ranks
-                cand["hybrid_score"] = score * 1.30  
+            if "ระเบียบ" in doc_type or "ระเบียบ" in law_name: score *= 1.30  
+            elif "คำสั่ง" in doc_type or "คำสั่ง" in law_name: score *= 1.10  
+            elif "หลักเกณฑ์" in doc_type or "หลักเกณฑ์" in law_name: score *= 1.05  
+            cand["hybrid_score"] = score
                 
-            elif "คำสั่ง" in doc_type or "คำสั่ง" in law_name:
-                # Give Orders a 10% boost
-                cand["hybrid_score"] = score * 1.10  
-                
-            elif "หลักเกณฑ์" in doc_type or "หลักเกณฑ์" in law_name:
-                # Give Standards a 5% boost
-                cand["hybrid_score"] = score * 1.05  
-                
-            # Guidelines (แนวทาง) receive no boost (1.0x multiplier)
-        # ==========================================
-
-        # 4. Sort by the newly boosted hybrid scores
         all_candidates.sort(key=lambda x: x.get("hybrid_score", 0), reverse=True)
-        
-        # 5. Take the top k overall
         top_results = all_candidates[:k]
         
-        # 6. Preserve Context (Fetch related guidelines for winning Regulations)
+        keywords = await self.extract_keywords(effective_query)
         for doc in top_results:
-            law_name = doc.get("law_name", "")
-            if "ระเบียบ" in law_name:
+            if "ระเบียบ" in doc.get("law_name", ""):
                 allowed_titles = self.get_related_document_titles(doc)
                 if allowed_titles:
                     normalized_allowed = [self.super_normalize(t) for t in allowed_titles]
-                    keywords = await self.extract_keywords(query)
-                    
-                    vec_res = self.vector_search_other(query, k=15)
+                    vec_res = self.vector_search_other(effective_query, k=15)
                     key_res = self.keyword_search_other(keywords, k=15)
                     other_cands = self._run_rrf_fusion(vec_res, key_res, self.other_metadata, k=15)
                     
                     filtered_related = []
                     seen_chunks = set()
-                    
                     for cand in other_cands:
                         norm_cand_name = self.super_normalize(cand.get("law_name", ""))
                         is_match = any(nt in norm_cand_name or norm_cand_name in nt for nt in normalized_allowed)
-                        
                         unique_key = f"{cand.get('law_name')}|{cand.get('id')}"
                         if is_match and unique_key not in seen_chunks:
                             filtered_related.append(cand)
                             seen_chunks.add(unique_key)
-                    
                     doc["related_documents"] = self._filter_date(filtered_related, k=3, search_date=search_date)
                 else:
                     doc["related_documents"] = []
-                    
         return top_results

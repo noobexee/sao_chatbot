@@ -167,58 +167,56 @@ async def get_legal_route(query: str, history_messages: list, llm: Any) -> str:
 async def handle_legal_rag(query: str, history: list, llm:Any, retriever:Retriever):
     route = await get_legal_route(query, history, llm)
     if route == "ORDER":
-        retrieved_docs = await retriever.retrieve_order(user_query=query, k=3)
+        retrieved_docs = await retriever.retrieve_order(user_query=query, k=3, history=history)
         
     elif route == "GUIDELINE":
-        retrieved_docs = await retriever.retrieve_guideline(user_query=query, k=3)
+        retrieved_docs = await retriever.retrieve_guideline(user_query=query, k=3, history=history)
         
     elif route == "STANDARD":
-        retrieved_docs = await retriever.retrieve_standard(user_query=query, k=3)
+        retrieved_docs = await retriever.retrieve_standard(user_query=query, k=3, history=history)
     elif route == "REGULATION" :
         retrieved_docs = await retriever.retrieve_regulation(user_query=query, k=3, history=history)
     else:
-        retrieved_docs = await retriever.retrieve_general(query=query, k=3)
+        retrieved_docs = await retriever.retrieve_general(query=query, k=3, history=history)
 
     context_str = format_regulation_context(retrieved_docs)
+    history_str = "\n".join([f"{msg.type}: {msg.content}" for msg in history[-5:]]) if history else "No history."
     parser = JsonOutputParser(pydantic_object=LegalResponseSchema)
     
     prompt = ChatPromptTemplate.from_messages([
-            ("system", """
-            ### ROLE
-            You are a specialized Thai Legal Assistant for the State Audit Office (สตง.).
-            Your goal is to provide a structured JSON response based ONLY on the provided Context.
+        ("system", """
+        ### ROLE
+        You are a specialized Thai Legal Assistant for the State Audit Office (สตง.).
+        Provide a helpful, direct answer followed by structured legal references in JSON format.
 
-            ### INSTRUCTIONS FOR 'answer_text'
-            Adapt your response structure based on the documents provided in the Context:
+        ### CRITICAL FORMATTING RULES
+        1. NO MARKDOWN: Do not use double asterisks (**), italics, or bolding in the 'answer_text'. Use plain text only.
+        2. NO HALLUCINATED SECTIONS: When the context says "ให้นำหลักเกณฑ์ตาม (๑) มาใช้บังคับ" within a specific Section (e.g., Section 26), identify it correctly as "ข้อ 26 (1)". Do not guess the Section number if it is not explicitly linked in that sentence.
 
-            1. **Opening Statement (Choose the most appropriate):**
-            - If the main document is a Regulation (ระเบียบ): Start with "จาก{{clause_no}} ของ{{law_name}} มีเนื้อหาดังนี้"
-            - If the main document is an Order, Guideline, or Standard (คำสั่ง, แนวทาง, หลักเกณฑ์): Start with "จาก{{law_name}} มีเนื้อหาดังนี้" (Add the clause/section number if it is available in the context).
-            2. **Transitions (If supporting documents exist):** - If there are additional related documents in the context, transition naturally with: "นอกจากนี้ ตาม**{{guide_name}}** ได้กำหนดรายละเอียดเพิ่มเติมว่า"
-            3. **Style:** Professional Thai (ภาษาไทยระดับทางการ). Use **bold** for section numbers and document names.
-            4. **Cleanliness:** Do not use headers (e.g., "REGULATION PART"). Do not include visible source IDs (e.g., [REG_1]).
+        ### INSTRUCTIONS FOR 'answer_text'
+        1. Direct Answer First: Summarize the core meaning in 1-2 sentences.
+        2. Mandatory In-text Citations: Every legal point must be followed by (จาก [ชื่อเอกสาร]).
+        3. Structure: 
+           - For Regulations: "ตามข้อ [เลขข้อ] ของ [ชื่อระเบียบ] กำหนดว่า..."
+           - For Guidelines: "นอกจากนี้ ตาม [ชื่อแนวทาง] กำหนดว่า..."
+        4. Precise Referencing: If a sub-clause points to another sub-clause (e.g., "ตาม (1)"), ensure you refer to it as the full clause name (e.g., "ข้อ 26 (1)").
 
-            ### INSTRUCTIONS FOR 'used_law_names'
-            1. Identify every Regulation, Order, Guideline, or Standard name that was actually used to construct the answer.
-            2. Return them as a list of strings using the exact titles provided in the context.
-            
-            ### MANDATORY REFUSAL MESSAGE:
-            If the context is missing information, output exactly: 
-            "ขออภัยครับ เอกสารที่สืบค้นได้ไม่ครอบคลุมข้อมูลในส่วนนี้ (เช่น ข้อมูลติดต่อ หรือระเบียบที่ท่านถามถึง) ผมจึงไม่สามารถให้คำตอบที่ถูกต้องตามเอกสารอ้างอิงได้ครับ"
+        ### INSTRUCTIONS FOR 'used_law_names'
+        - List ONLY titles cited in the 'answer_text'. Accuracy is mandatory.
 
-            {format_instructions}
+        {format_instructions}
 
-            ### DATA SOURCES:
-            - Context: {context}
-            - History: {history}
-            """),
-            ("human", "User Query: {query}")
-        ])
-        
+        ### DATA SOURCES:
+        - Context: {context}
+        - History: {history}
+        """),
+        ("human", "User Query: {query}")
+    ])
+    
     chain = (
         {
             "context": lambda x: context_str,
-            "history": lambda x: history,
+            "history": lambda x: history_str, 
             "query": lambda x: query,
             "format_instructions": lambda x: parser.get_format_instructions()
         }
@@ -226,7 +224,6 @@ async def handle_legal_rag(query: str, history: list, llm:Any, retriever:Retriev
         | llm
         | parser
     )
-    
     try:
         result = await chain.ainvoke({})
         
