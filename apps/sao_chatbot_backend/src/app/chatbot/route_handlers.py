@@ -100,7 +100,7 @@ async def handle_file_request(query: str, history: list, llm: Any):
         return "ขออภัยครับ เกิดข้อผิดพลาดในการค้นหาไฟล์", []    
 
 
-async def handle_FAQ(query: str, history: list):
+async def handle_FAQ(query: str, history: list, llm:Any):
 
     return "ขออภัยครับ ผมไม่มีข้อมูลในส่วนนี้ (ข้อมูลติดต่อหรือที่อยู่หน่วยงาน) ผมสามารถให้ข้อมูลได้เฉพาะเรื่องกฎหมายและระเบียบการตรวจสอบเท่านั้นครับ", []
 
