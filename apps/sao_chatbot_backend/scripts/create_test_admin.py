@@ -8,12 +8,13 @@ load_dotenv()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-def hash_password(password: str) -> str:
-    return pwd_context.hash(password[:72])  # กัน bcrypt limit
+def hash_password(password: str):
+    return pwd_context.hash(password)
 
 
-def create_user():
+def create_admin():
     db_url = os.getenv("SQL_DATABASE_URL")
+
     if not db_url:
         print("Error: SQL_DATABASE_URL is missing from .env")
         return
@@ -22,40 +23,39 @@ def create_user():
         conn = psycopg2.connect(db_url)
         cur = conn.cursor()
 
-        USERNAME = "test_user"
-        PASSWORD = "password123"
-        ROLE = "user"  # 👉 เปลี่ยนได้: user / admin / document_manager
+        ADMIN_USERNAME = "admin"
+        ADMIN_PASSWORD = "admin123"  # 🔥 เปลี่ยนตอนใช้งานจริง
 
         # check existing
-        cur.execute("SELECT id FROM users WHERE username = %s", (USERNAME,))
+        cur.execute("SELECT id FROM users WHERE username = %s", (ADMIN_USERNAME,))
         existing_user = cur.fetchone()
 
         if existing_user:
-            print(f"User '{USERNAME}' already exists (ID: {existing_user[0]})")
+            print(f"Admin already exists (ID: {existing_user[0]})")
             return
 
-        hashed_password = hash_password(PASSWORD)
+        hashed_password = hash_password(ADMIN_PASSWORD)
 
         insert_query = """
-        INSERT INTO users (username, password, role, is_active, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, NOW(), NOW())
+        INSERT INTO users (username, password, role, is_active)
+        VALUES (%s, %s, %s, %s)
         RETURNING id;
         """
 
         cur.execute(insert_query, (
-            USERNAME,
+            ADMIN_USERNAME,
             hashed_password,
-            ROLE,
+            "admin",
             True
         ))
 
-        new_id = cur.fetchone()[0]
         conn.commit()
+        new_id = cur.fetchone()[0]
 
-        print("✅ User created successfully!")
+        print("✅ Admin created successfully!")
         print(f"   ID: {new_id}")
-        print(f"   Username: {USERNAME}")
-        print(f"   Role: {ROLE}")
+        print(f"   Username: {ADMIN_USERNAME}")
+        print(f"   Password: {ADMIN_PASSWORD}")
 
     except Exception as e:
         print(f"Database Error: {e}")
@@ -67,4 +67,4 @@ def create_user():
 
 
 if __name__ == "__main__":
-    create_user()
+    create_admin()
