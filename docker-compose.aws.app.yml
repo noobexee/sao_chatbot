@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     restart: always
     volumes:
-      - /home/ec2-user/sao_chatbot_data/faiss_index:/app/storage/faiss_index
+      - /home/ec2-user/sao_chatbot_data:/app/storage
     ports:
       - "${BACKEND_PORT}:${BACKEND_PORT}" 
     env_file:
