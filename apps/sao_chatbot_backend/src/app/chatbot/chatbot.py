@@ -22,7 +22,7 @@ class Chatbot:
         self.repository = ChatRepository()
         self.retriever = Retriever()
 
-    def _get_history_objects(self, user_id: int, session_id: str) -> List[Any]:
+    def _get_history_objects(self, user_id: str, session_id: str) -> List[Any]:
         rows = self.repository.get_messages_by_session(user_id, session_id)
         print(rows)
         messages = []
@@ -43,7 +43,7 @@ class Chatbot:
             
         return "\n\n---\n\n".join(formatted_chunks)
     
-    def get_session_history(self, user_id: int, session_id: str) -> List[Dict]:
+    def get_session_history(self, user_id: str, session_id: str) -> List[Dict]:
         rows = self.repository.get_messages_by_session(user_id, session_id)
         formatted_history = []
         for row in rows:
@@ -52,10 +52,10 @@ class Chatbot:
             formatted_history.append({"role": "assistant", "content": row[1], "created_at": timestamp})
         return formatted_history
 
-    def get_user_sessions(self, user_id: int) -> List[Dict]:
+    def get_user_sessions(self, user_id: str) -> List[Dict]:
         return self.repository.get_user_sessions_summary(user_id)
 
-    def delete_session_history(self, user_id: int, session_id: str) -> Dict[str, Any]:
+    def delete_session_history(self, user_id: str, session_id: str) -> Dict[str, Any]:
         """
         Deletes a specific chat session.
         """
@@ -68,7 +68,7 @@ class Chatbot:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-    def update_session(self, user_id: int, session_id: str, title: Optional[str] = None, is_pinned: Optional[bool] = None) -> Dict[str, Any]:
+    def update_session(self, user_id: str, session_id: str, title: Optional[str] = None, is_pinned: Optional[bool] = None) -> Dict[str, Any]:
         try:
             success = self.repository.update_session_metadata(user_id, session_id, title, is_pinned)
             
@@ -290,7 +290,7 @@ class Chatbot:
         return "ขออภัยครับ ผมไม่มีข้อมูลในส่วนนี้ (ข้อมูลติดต่อหรือที่อยู่หน่วยงาน) ผมสามารถให้ข้อมูลได้เฉพาะเรื่องกฎหมายและระเบียบการตรวจสอบเท่านั้นครับ", []
 
 
-    async def answer_question(self, user_id: int, session_id: str, query: str) -> RAGResponse: 
+    async def answer_question(self, user_id: str, session_id: str, query: str) -> RAGResponse: 
         history_messages = self._get_history_objects(user_id, session_id)
 
         route = await self._get_routing_decision(query, history_messages)
