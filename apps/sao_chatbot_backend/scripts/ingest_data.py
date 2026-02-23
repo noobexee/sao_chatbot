@@ -1,18 +1,21 @@
-from src.app.utils.preprocess_dataset import run_indexing_pipeline
 import os
+from src.app.utils.preprocess_dataset import run_indexing_pipeline
 
-INDEX_PATH = "storage/faiss_inde"
+REGULATION_INDEX_PATH = "storage/regulations"
+OTHERS_INDEX_PATH = "storage/others"
 
 if __name__ == "__main__":
-    if os.path.exists(INDEX_PATH):
-        print("Index found. Skipping ingestion...")
+    
+    if os.path.exists(f"{REGULATION_INDEX_PATH}") and os.path.exists(f"{OTHERS_INDEX_PATH}"):
+        print("Indexes found. Skipping ingestion...")
     else:
-        print("Creating new index...")
-        regulation_path_file = "metadata/ระเบียบ/"
-        guideline_path_file = "metadata/แนวทาง/"
-        order_path_file = "metadata/คำสั่ง/"
-        run_indexing_pipeline("metadata/init")
+        print("Creating new dual indexes...")
+        
+        os.makedirs(REGULATION_INDEX_PATH, exist_ok=True)
+        os.makedirs(OTHERS_INDEX_PATH, exist_ok=True)
 
-        run_indexing_pipeline(regulation_path_file)
-        run_indexing_pipeline(guideline_path_file)
-        run_indexing_pipeline(order_path_file)
+        # Cleaned: No more redundant boolean flags!
+        run_indexing_pipeline("metadata/ระเบียบ/", is_regulation_folder=True)
+        run_indexing_pipeline("metadata/แนวทาง/", is_regulation_folder=False)
+        run_indexing_pipeline("metadata/คำสั่ง/", is_regulation_folder=False)
+        run_indexing_pipeline("metadata/หลักเกณฑ์/", is_regulation_folder=False)

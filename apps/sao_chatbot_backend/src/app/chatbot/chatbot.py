@@ -9,9 +9,13 @@ from src.app.llm.typhoon import TyphoonLLM
 from src.app.chatbot.schemas import RAGResponse
 from src.app.chatbot.retriever import Retriever
 from src.db.repositories.chat_repository import ChatRepository
+from .route_handlers import handle_chitchat, handle_file_request, handle_FAQ, handle_legal_rag, get_legal_route
 from langchain_core.globals import set_debug
 
-set_debug(True)
+class LegalResponseSchema(BaseModel):
+    answer_text: str = Field(description="The natural Thai response starting with 'จากข้อ... ของระเบียบ...'")
+    used_law_names: List[str] = Field(description="List of exact law_names or guideline_names from the context that were used to answer the question.")
+
 class FileResponse(BaseModel):
     answer_text: str = Field(description="A polite, formal Thai response (e.g., 'ขออนุญาตนำส่งเอกสาร').")
     target_files: List[str] = Field(description="List of exact filenames found. Empty list if none.")
@@ -42,7 +46,7 @@ class Chatbot:
             i += 1
             
         return "\n\n---\n\n".join(formatted_chunks)
-    
+ 
     def get_session_history(self, user_id: int, session_id: str) -> List[Dict]:
         rows = self.repository.get_messages_by_session(user_id, session_id)
         formatted_history = []
@@ -146,150 +150,7 @@ class Chatbot:
         except Exception as e:
             print(f"Routing Chain Failed: {e}")
             return "LEGAL_RAG"
-
-    async def _handle_chitchat(self, query: str, history: list):
-
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """
-                You are a specialized Legal Assistant skilled in the regulations of the **Office of the Ombudsman (สำนักงานผู้ตรวจการแผ่นดิน)**.
-                
-                **Your Scope of Expertise:**
-                1. **Regulations (ระเบียบ):** Official regulations of the Office of the Ombudsman.
-                2. **Orders (คำสั่ง):** Administrative or enforcement orders related to the office.
-                3. **Guidelines (แนวทาง):** Operational guidelines and practice standards.
-
-                **Your Goal:** Politely acknowledge the user's greeting, then immediately guide them to ask about these specific documents.
-                
-                **Guidelines:**
-                - **Language:** Professional Thai (ภาษาไทยระดับทางการ).
-                - **Tone:** Formal, precise, and helpful.
-                - **Pivot Strategy:** Do not stay in small talk. End your greeting by listing what you can search for (Regulations, Orders, Guidelines).
-                
-                **Example Response:**
-                - User: "สวัสดี" (Hello)
-                - You: "สวัสดีครับ ผมเป็นระบบผู้ช่วยค้นหาข้อมูลระเบียบ คำสั่ง และแนวทางปฏิบัติของสำนักงานผู้ตรวจการแผ่นดิน มีหัวข้อใดที่ต้องการให้ช่วยตรวจสอบไหมครับ"
-            """
-            ),
-            MessagesPlaceholder(variable_name="history"),
-            ("human", "{input}")
-        ])
-        chain = (
-            {
-                "history": lambda x: history,
-                "input": lambda x: query
-            }
-            | prompt 
-            | self.llm.get_model() 
-            | StrOutputParser()
-        )
-        
-        answer = await chain.ainvoke({"input": query})
-        
-        return answer, []
-
-    async def _handle_legal_rag(self, query: str, history: list):
-        retrieved_docs = await self.retriever.retrieve(query, history)
-        
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """
-            ### ROLE
-            You are a specialized assistant for a Thai Legal RAG system.
-            **YOUR AUTHORITY IS LIMITED TO THE PROVIDED CONTEXT ONLY.**
-            You are FORBIDDEN from using your internal training data, external websites, or general knowledge to answer questions.
-
-            ### DATA SOURCES
-            - **Context:** {context}
-            - **Chat History:** {history}
-
-            ### STRICT OPERATIONAL RULES (MUST FOLLOW):
-            1. **NO OUTSIDE KNOWLEDGE:** - If the answer is not explicitly written in the **Context** above, you MUST say you do not have the information.
-               - **DO NOT** invent, guess, or provide phone numbers, websites, or addresses unless they are physically present in the **Context** text.
-               - **DO NOT** try to be "helpful" by providing general contact info for government offices (e.g., OAG/สตง.) if it is not in the documents.
-
-            2. **CHECK FOR RELEVANCE:**
-               - The user might ask a "How-to" question (e.g., "How to contact"). 
-               - If the **Context** contains legal procedures (e.g., "How to audit") but NOT contact info, **YOU MUST REFUSE TO ANSWER.** - Do not twist a legal procedure to fit a contact question.
-
-            3. **RESPONSE FORMAT:**
-               - Answer in **Professional Thai (ภาษาไทยระดับทางการ)**.
-               - Be direct and concise.
-               - Use **bold** for important legal terms or section numbers (e.g., **มาตรา 42**).
-
-            ### MANDATORY REFUSAL MESSAGE
-            If the **Context** does not contain the answer, or if the retrieved documents are irrelevant to the user's specific question, output EXACTLY this message:
-            "ขออภัยครับ เอกสารที่สืบค้นได้ไม่ครอบคลุมข้อมูลในส่วนนี้ (เช่น ข้อมูลติดต่อ หรือระเบียบที่ท่านถามถึง) ผมจึงไม่สามารถให้คำตอบที่ถูกต้องตามเอกสารอ้างอิงได้ครับ"
-            """),
-            
-            ("human", """
-            Context: {context}
-            User Query: {query}
-            """)
-        ])
-
-
-        chain = (
-            {
-                "context": lambda x: self._format_docs_with_sources(retrieved_docs),
-                "history": lambda x: history,
-                "query": lambda x: query
-            }
-            | prompt 
-            | self.llm.get_model() 
-            | StrOutputParser()
-        )
-        
-        answer = await chain.ainvoke({})
-        refs = list({doc.get("law_name") for doc in retrieved_docs})
-        return answer, refs   
-    
-    async def _handle_file_request(self, query: str, history: list):
-        parser = JsonOutputParser(pydantic_object=FileResponse)
-        
-        available_files_list = [
-            "แนวทางการปฏิบัติงาน_SAO.pdf",
-            "ระเบียบการเบิกจ่าย_2567.pdf"
-        ]
-        files_context = "\n".join(available_files_list)
-
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """
-            You are a smart "File Librarian" for the Office of the Ombudsman.
-            Respond in Formal Thai.
-            {format_instructions}
-            """),
-            ("human", """
-            Available Files:
-            {context}
-
-            User Query: {query}
-            History: {history}
-            """),
-        ])
-        chain = (
-            {
-                    "context": lambda x: files_context,
-                    "query": lambda x: query,
-                    "history": lambda x: history,
-                    "format_instructions": lambda x: parser.get_format_instructions()
-            }
-                | prompt 
-                | self.llm.get_model() 
-                | parser
-        )
-    
-        try:
-            response = await chain.ainvoke({})
-            return response["answer_text"], response["target_files"]
-                
-        except Exception as e:
-            print(f"Error parsing JSON: {e}")
-            return "ขออภัยครับ เกิดข้อผิดพลาดในการค้นหาไฟล์", []    
-
-    async def _handle_FAQ(self, query: str, history: list):
-
-        return "ขออภัยครับ ผมไม่มีข้อมูลในส่วนนี้ (ข้อมูลติดต่อหรือที่อยู่หน่วยงาน) ผมสามารถให้ข้อมูลได้เฉพาะเรื่องกฎหมายและระเบียบการตรวจสอบเท่านั้นครับ", []
-
-
+ 
     async def answer_question(self, user_id: int, session_id: str, query: str) -> RAGResponse: 
         history_messages = self._get_history_objects(user_id, session_id)
 
@@ -297,16 +158,16 @@ class Chatbot:
 
         try:
             if route == "CHITCHAT":
-                response_text, refs_data = await self._handle_chitchat(query, history_messages)
+                response_text, refs_data = await handle_chitchat(query, history_messages, self.llm.get_model())
                 
             elif route == "FILE_REQUEST":
-                response_text, refs_data = await self._handle_file_request(query, history_messages)
+                response_text, refs_data = await handle_file_request(query, history_messages, self.llm.get_model())
 
             elif route == "FAQ":
-                response_text, refs_data = await self._handle_FAQ(query, history_messages)
+                response_text, refs_data = await handle_FAQ(query, history_messages, self.llm.get_model())
                 
             else:
-                response_text, refs_data = await self._handle_legal_rag(query, history_messages)
+                response_text, refs_data = await handle_legal_rag(query, history_messages, self.llm.get_model(), self.retriever)
 
         except Exception as e:
             print(f"Handler Failed: {e}")

@@ -187,7 +187,8 @@ def process_folders(input_root: str, output_root: str, metadata_file: str = "met
     folder_map = {
         "ระเบียบ": chunk_by_clause,
         "คำสั่ง": chunk_by_size,
-        "แนวทาง": chunk_by_size
+        "แนวทาง": chunk_by_size,
+        "หลักเกณฑ์": chunk_by_size
     }
     
     for folder_name, chunk_func in folder_map.items():
