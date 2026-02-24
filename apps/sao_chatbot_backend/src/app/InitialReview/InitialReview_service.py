@@ -1,0 +1,117 @@
+import uuid
+import io
+import os
+import shutil
+import asyncio
+import tempfile
+from fastapi import UploadFile
+
+from src.db.repositories.InitialReview_repository import InitialReviewRepository
+from src.app.llm import InitialReview_agents
+from src.app.llm.ocr import TyphoonOCRLoader
+
+class InitialReviewService:
+    def __init__(self):
+        self.repo = InitialReviewRepository()
+    
+    # --- Helper to extract text (Avoids code duplication) ---
+    async def _extract_text_from_file(self, file: UploadFile) -> str:
+        temp_path = None
+        try:
+            suffix = os.path.splitext(file.filename or "")[1]
+            if not suffix:
+                suffix = ".tmp"
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                shutil.copyfileobj(file.file, tmp)
+                temp_path = tmp.name
+
+            loader = TyphoonOCRLoader(file_path=temp_path)
+            documents = loader.load()
+            extracted_text = "\n\n".join([doc.page_content for doc in documents])
+            
+            return extracted_text
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    # --- OCR Only Logic ---
+    async def ocr_document_logic(self, file: UploadFile) -> dict:
+        try:
+            extracted_text = await self._extract_text_from_file(file)
+            return {
+                "status": "success",
+                "text": extracted_text,
+                "page_count": 0 # TyphoonOCRLoader might not give page count easily, defaulting 0
+            }
+        except Exception as e:
+            print(f"Error in ocr_document_logic: {e}")
+            raise e
+
+    # --- Full Analysis Logic ---
+    async def analyze_document_logic(self, file: UploadFile) -> dict:
+        try:
+            # 1. Extract Text
+            extracted_text = await self._extract_text_from_file(file)
+            print(f"Extracted {len(extracted_text)} chars. Sending to Typhoon Agents...")
+            
+            # 2. AI Agents
+            criteria2_task = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria2_sao_authority, extracted_text)
+            criteria4_task = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria4_sufficiency, extracted_text)
+            criteria6_task = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria6_complainant, extracted_text)
+            criteria8_task = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria8_other_authority, extracted_text)
+
+            criteria2_ai_result, criteria4_ai_result, criteria6_ai_result, criteria8_ai_result = await asyncio.gather(criteria2_task, criteria4_task, criteria6_task, criteria8_task)
+
+            # 3. Format Response
+            criteria2_response = self._format_ai_response(criteria2_ai_result, "criteria2")
+            criteria4_response = self._format_ai_response(criteria4_ai_result, "criteria4")
+            criteria6_response = self._format_ai_response(criteria6_ai_result, "criteria6")
+            criteria8_response = self._format_ai_response(criteria8_ai_result, "criteria8")
+
+            return {
+                "status": "success",
+                "data": {
+                    "criteria2": criteria2_response,
+                    "criteria4": criteria4_response,
+                    "criteria6": criteria6_response,
+                    "criteria8": criteria8_response,
+                    "raw_text": extracted_text[:200]
+                }
+            }
+        except Exception as e:
+            print(f"Error in analyze_document_logic: {e}")
+            raise e
+
+    def get_file_stream(self, InitialReview_id: str):
+        info = self.repo.get_InitialReview_summary(InitialReview_id)
+        if not info:
+             raise ValueError("InitialReview ID not found")
+        
+        file_content = self.repo.get_InitialReview_file_content(InitialReview_id)
+        if not file_content:
+            raise FileNotFoundError("File content missing")
+
+        file_name = info.get("file_name", "doc.pdf")
+        media_type = "application/pdf" if file_name.lower().endswith(".pdf") else "image/jpeg"
+        
+        return io.BytesIO(file_content), media_type
+
+    def save_ai_feedback(self, InitialReview_id, criteria_id, result):
+        return self.repo.save_criteria_log(InitialReview_id, int(criteria_id), result)
+
+    def _format_ai_response(self, result: dict, criteria_type: str) -> dict:
+        if not result:
+            return {"status": "fail", "title": "AI Error", "details": {}, "people": []}
+        
+        if criteria_type == "criteria6":
+            people_list = result.get("people", [])
+            has_complainant = any(p['role'] == 'ผู้ร้องเรียน' for p in people_list)
+            return {"status": "success" if has_complainant else "fail", "title": "ผู้ร้องเรียน", "people": people_list}
+        
+        return {
+            "status": result.get("status", "fail"),
+            "title": result.get("title", "การวิเคราะห์ล้มเหลว"),
+            "reason": result.get("reason", "-"),
+            "details": result.get("details", {})
+        }
