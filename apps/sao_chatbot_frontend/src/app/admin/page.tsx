@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {getAllUsers} from "@/libs/auth/getUser";
+import { useRouter } from "next/navigation";
+import { getAllUsers } from "@/libs/auth/getUser";
 import { createUser } from "@/libs/auth/newUser";
 import { deleteUser } from "@/libs/auth/deleteUser";
 import { updateUser } from "@/libs/auth/editUser";
-
 
 interface User {
   id: string;
@@ -15,6 +15,8 @@ interface User {
 }
 
 export default function AdminPage() {
+  const router = useRouter();
+
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -59,6 +61,12 @@ export default function AdminPage() {
         return;
       }
 
+      // ❌ block creating new admin
+      if (!editingUserId && role === "admin") {
+        showMessage("Cannot create new admin");
+        return;
+      }
+
       if (editingUserId) {
         await updateUser(editingUserId, username, password, role, token);
         showMessage("User updated");
@@ -80,6 +88,13 @@ export default function AdminPage() {
 
   // ===== DELETE =====
   const handleDelete = async (userId: string) => {
+    const user = users.find((u) => u.id === userId);
+
+    if (user?.role === "admin") {
+      showMessage("Cannot delete admin");
+      return;
+    }
+
     if (!confirm("Delete this user?")) return;
 
     try {
@@ -91,7 +106,7 @@ export default function AdminPage() {
     }
   };
 
-  // ===== EDIT =====
+  // ===== EDIT (admin allowed) =====
   const handleEdit = (user: User) => {
     setEditingUserId(user.id);
     setUsername(user.username);
@@ -100,54 +115,75 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="min-h-screen p-6 bg-[var(--color-background)] text-[var(--color-foreground)]">
-      {/* ===== TOAST ===== */}
+    <div className="flex min-h-screen flex-col items-center bg-white p-6 text-gray-800">
+      
+      {/* BACK BUTTON */}
+      <div className="w-full max-w-5xl flex justify-end mb-4">
+        <button
+          onClick={() => router.push("/auth")}
+          className="rounded-lg bg-gray-800 px-4 py-2 text-white hover:bg-gray-900"
+        >
+          ← Back to Sign In
+        </button>
+      </div>
+
+      {/* TOAST */}
       {message && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 bg-black text-white px-4 py-2 rounded animate-fade-in-out">
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 rounded-lg bg-black px-4 py-2 text-white">
           {message}
         </div>
       )}
 
-      <div className="max-w-5xl mx-auto space-y-6">
-        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+      <div className="w-full max-w-5xl space-y-6">
 
-        {/* ===== FORM CARD ===== */}
-        <div className="rounded-xl border p-5 shadow-sm bg-white/5 backdrop-blur">
-          <h2 className="font-semibold mb-3">
+        {/* TITLE */}
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-[#1e293b]">
+            Admin Dashboard
+          </h1>
+          <p className="text-gray-500">User Management</p>
+        </div>
+
+        {/* FORM */}
+        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-xl">
+          <h2 className="mb-4 font-semibold text-gray-700">
             {editingUserId ? "Update User" : "Create User"}
           </h2>
 
           <div className="grid md:grid-cols-3 gap-3">
+
             <input
-              className="border rounded px-3 py-2 bg-transparent"
+              className="rounded-lg border border-gray-300 p-3 outline-none focus:border-[#a83b3b] focus:ring-1 focus:ring-[#a83b3b]"
               placeholder="Username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
             />
 
             <input
-              className="border rounded px-3 py-2 bg-transparent"
               type="password"
+              className="rounded-lg border border-gray-300 p-3 outline-none focus:border-[#a83b3b] focus:ring-1 focus:ring-[#a83b3b]"
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
 
             <select
-              className="border rounded px-3 py-2 bg-[var(--color-background)] text-[var(--color-foreground)] focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="rounded-lg border border-gray-300 p-3 bg-white text-gray-800 outline-none focus:border-[#a83b3b] focus:ring-1 focus:ring-[#a83b3b]"
               value={role}
               onChange={(e) => setRole(e.target.value)}
             >
               <option value="user">user</option>
-              <option value="admin">admin</option>
               <option value="document_manager">document_manager</option>
+              {editingUserId && role === "admin" && (
+                <option value="admin">admin</option>
+              )}
             </select>
           </div>
 
           <div className="mt-4 flex gap-2">
             <button
               onClick={handleSubmit}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition"
+              className="rounded-lg bg-[#a83b3b] px-4 py-2 text-white hover:bg-[#8a2f2f]"
             >
               {editingUserId ? "Update" : "Create"}
             </button>
@@ -160,7 +196,7 @@ export default function AdminPage() {
                   setPassword("");
                   setRole("user");
                 }}
-                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded"
+                className="rounded-lg bg-gray-400 px-4 py-2 text-white hover:bg-gray-500"
               >
                 Cancel
               </button>
@@ -168,15 +204,17 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* ===== TABLE ===== */}
-        <div className="rounded-xl border shadow-sm overflow-hidden">
-          <div className="p-4 font-semibold border-b">All Users</div>
+        {/* TABLE */}
+        <div className="rounded-2xl border border-gray-100 bg-white shadow-xl overflow-hidden">
+          <div className="p-4 font-semibold text-gray-700 border-b">
+            All Users
+          </div>
 
           {loading ? (
-            <p className="p-4">Loading...</p>
+            <p className="p-4 text-gray-500">Loading...</p>
           ) : (
             <table className="w-full text-sm">
-              <thead className="bg-black/5">
+              <thead className="bg-gray-50 text-gray-600">
                 <tr>
                   <th className="p-3 text-left">Username</th>
                   <th className="p-3 text-left">Role</th>
@@ -187,23 +225,31 @@ export default function AdminPage() {
 
               <tbody>
                 {users.map((user) => (
-                  <tr
-                    key={user.id}
-                    className="border-t hover:bg-black/5 transition"
-                  >
+                  <tr key={user.id} className="border-t hover:bg-gray-50">
+
                     <td className="p-3">{user.username}</td>
-                    <td className="p-3">{user.role}</td>
+
+                    <td className="p-3">
+                      {user.role}
+                      {user.role === "admin" && (
+                        <span className="ml-2 text-xs text-purple-500">
+                          (Protected)
+                        </span>
+                      )}
+                    </td>
+
                     <td className="p-3">
                       <span
                         className={`px-2 py-1 rounded text-xs ${
                           user.is_active
-                            ? "bg-green-500/20 text-green-600"
-                            : "bg-red-500/20 text-red-600"
+                            ? "bg-green-100 text-green-600"
+                            : "bg-red-100 text-red-600"
                         }`}
                       >
                         {user.is_active ? "Active" : "Inactive"}
                       </span>
                     </td>
+
                     <td className="p-3 space-x-2">
                       <button
                         onClick={() => handleEdit(user)}
@@ -214,17 +260,24 @@ export default function AdminPage() {
 
                       <button
                         onClick={() => handleDelete(user.id)}
-                        className="px-3 py-1 rounded bg-red-600 hover:bg-red-700 text-white"
+                        disabled={user.role === "admin"}
+                        className={`px-3 py-1 rounded text-white ${
+                          user.role === "admin"
+                            ? "bg-gray-300 cursor-not-allowed"
+                            : "bg-red-600 hover:bg-red-700"
+                        }`}
                       >
                         Delete
                       </button>
                     </td>
+
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
         </div>
+
       </div>
     </div>
   );

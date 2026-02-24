@@ -18,20 +18,16 @@ export default function LoginPage() {
 
     try {
       const data = await login(username, password);
-
-      // ✅ save token
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("role", data.user.role);
 
-      // ✅ redirect ตาม role
       if (data.user.role === "admin") {
         router.push("/admin");
       } else if (data.user.role === "document_manager") {
-        router.push("/documents");
+        router.push("/merger");
       } else {
         router.push("/chatbot");
       }
-
     } catch (err: any) {
       setError(err.message || "Login failed");
     } finally {
@@ -40,7 +36,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-white p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-white p-4 text-gray-800">
+      
       <div className="w-full max-w-md rounded-2xl border border-gray-100 bg-white p-8 shadow-xl">
         
         <div className="mb-8 text-center">
@@ -59,7 +56,7 @@ export default function LoginPage() {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 p-3 outline-none focus:border-[#a83b3b] focus:ring-1 focus:ring-[#a83b3b]"
+              className="w-full rounded-lg border border-gray-300 p-3 text-gray-800 outline-none focus:border-[#a83b3b] focus:ring-1 focus:ring-[#a83b3b]"
               placeholder="Enter username"
             />
           </div>
@@ -73,7 +70,7 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 p-3 outline-none focus:border-[#a83b3b] focus:ring-1 focus:ring-[#a83b3b]"
+              className="w-full rounded-lg border border-gray-300 p-3 text-gray-800 outline-none focus:border-[#a83b3b] focus:ring-1 focus:ring-[#a83b3b]"
               placeholder="••••••••"
             />
           </div>
