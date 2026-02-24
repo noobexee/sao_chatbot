@@ -344,47 +344,84 @@ class DocumentRepository:
 
             new_doc_id = str(uuid.uuid4())
 
-            cur.execute(
+            if payload.merge_mode == "replace_all":
+                query = """
+                    INSERT INTO documents (
+                        id,
+                        type,
+                        title,
+                        announce_date,
+                        effective_date,
+                        version,
+                        text_content,
+                        status,
+                        is_snapshot,
+                        is_latest,
+                        pdf_file_name,
+                        pdf_file_data,
+                        created_at
+                    )
+                    SELECT
+                        %s,
+                        type,
+                        title,
+                        announce_date,
+                        effective_date,
+                        version,
+                        %s,
+                        'merged',
+                        FALSE,
+                        TRUE,
+                        pdf_file_name,
+                        pdf_file_data,
+                        NOW()
+                    FROM documents
+                    WHERE id = %s
                 """
-                INSERT INTO documents (
-                    id,
-                    type,
-                    title,
-                    announce_date,
-                    effective_date,
-                    version,
-                    text_content,
-                    status,
-                    is_snapshot,
-                    is_latest,
-                    created_at
-                )
-                SELECT
-                    %s,
-                    type,
-                    title,
-                    announce_date,
-                    effective_date,
-                    version + 1,
-                    %s,
-                    'merged',
-                    TRUE,
-                    TRUE,
-                    NOW()
-                FROM documents
-                WHERE id = %s
-                """,
+            else:
+                query = """
+                    INSERT INTO documents (
+                        id,
+                        type,
+                        title,
+                        announce_date,
+                        effective_date,
+                        version,
+                        text_content,
+                        status,
+                        is_snapshot,
+                        is_latest,
+                        created_at
+                    )
+                    SELECT
+                        %s,
+                        type,
+                        title,
+                        announce_date,
+                        effective_date,
+                        version,
+                        %s,
+                        'merged',
+                        TRUE,
+                        TRUE,
+                        NOW()
+                    FROM documents
+                    WHERE id = %s
+                """
+
+            cur.execute(
+                query,
                 (new_doc_id, merged_text, payload.amend_doc_id),
             )
 
             conn.commit()
             return new_doc_id
+
         except Exception:
             conn.rollback()
             raise
         finally:
             conn.close()
-
 
     # VERSION BUMP
     def bump_version_and_invalidate_latest(self, doc_id: str):
