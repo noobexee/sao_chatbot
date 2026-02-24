@@ -2,12 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getDocuments, Doc } from "@/libs/doc_manage/getDocuments";
+import { getDocuments, DocumentMeta } from "@/libs/doc_manage/getDocuments";
+
+type DocumentWithStatus = DocumentMeta & {
+  id: string;
+  status: string;
+};
 
 export default function MergerHomePage() {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [docs, setDocs] = useState<Doc[]>([]);
+  const [docs, setDocs] = useState<DocumentWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -16,7 +21,7 @@ export default function MergerHomePage() {
       try {
         setLoading(true);
         const data = await getDocuments();
-        setDocs(data);
+        setDocs(data as DocumentWithStatus[]);
       } catch {
         setError("ไม่สามารถโหลดรายการเอกสารได้");
       } finally {
@@ -27,13 +32,18 @@ export default function MergerHomePage() {
     load();
   }, []);
 
-  const filteredDocs = docs.filter((doc) =>
-    doc.title.toLowerCase().includes(query.toLowerCase())
-  );
+  const filteredDocs = docs
+    // ✅ business rule
+    .filter(
+      (doc) => doc.is_latest === true || doc.status === "need_attention"
+    )
+    // 🔍 search
+    .filter((doc) =>
+      doc.title.toLowerCase().includes(query.toLowerCase())
+    );
 
   return (
     <div className="h-full w-full p-6 space-y-4">
-
       <h2 className="text-sm font-semibold text-gray-800">
         เลือกเอกสารที่ต้องการอัปเดต
       </h2>
@@ -57,37 +67,77 @@ export default function MergerHomePage() {
       {!loading && !error && (
         <div className="space-y-2">
           {filteredDocs.length === 0 && (
-            <p className="text-sm text-gray-500">ไม่พบเอกสาร</p>
+            <p className="text-sm text-gray-500">
+              ไม่พบเอกสารที่ตรงเงื่อนไข
+            </p>
           )}
 
-          {filteredDocs.map((doc) => (
-            <div
-              key={doc.id}
-              className="flex items-center justify-between
-                         rounded-md border border-gray-200 px-4 py-3"
-            >
-              <div>
-                <p className="text-sm font-medium text-gray-800">
-                  {doc.title}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {doc.type} • ฉบับที่ {doc.version} • ใช้ตั้งแต่ {doc.valid_from}
-                </p>
-              </div>
+          {filteredDocs.map((doc) => {
+            const needAttention = doc.status === "need_attention";
 
-              <button
-                disabled={doc.status !== "done"}
-                onClick={() => router.push(`/merger/${doc.id}/update`)}
-                className={`rounded-full border px-4 py-2 text-sm
-                  ${doc.status === "done"
-                    ? "border-gray-200 hover:bg-gray-50"
-                    : "border-gray-100 text-gray-400 cursor-not-allowed"
-                  }`}
+            return (
+              <div
+                key={doc.id}
+                onClick={() => router.push(`/merger/${doc.id}/view`)}
+                className={`
+                  cursor-pointer rounded-md border px-4 py-3
+                  transition hover:bg-gray-50
+                  ${
+                    needAttention
+                      ? "border-yellow-300 bg-yellow-50 hover:bg-yellow-100"
+                      : "border-gray-200"
+                  }
+                `}
               >
-                Update document
-              </button>
-            </div>
-          ))}
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-gray-800">
+                        {doc.title}
+                      </p>
+
+                      {doc.is_snapshot && (
+                        <span
+                          className="rounded-full bg-gray-200 px-2 py-0.5
+                                     text-[10px] font-semibold text-gray-700"
+                        >
+                          SNAPSHOT
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-gray-500">
+                      {doc.type} • ฉบับที่ {doc.version}
+                    </p>
+
+                    <p className="text-xs text-gray-400">
+                      ใช้ตั้งแต่ {doc.effective_date}
+                    </p>
+
+                    {needAttention && (
+                      <p className="text-xs font-medium text-yellow-700">
+                        ต้องตรวจสอบเอกสารนี้
+                      </p>
+                    )}
+                  </div>
+
+                  {needAttention && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/merger/${doc.id}/update`);
+                      }}
+                      className="rounded-full border border-yellow-400
+                                 bg-yellow-100 px-4 py-2 text-sm
+                                 hover:bg-yellow-200 transition"
+                    >
+                      Update
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

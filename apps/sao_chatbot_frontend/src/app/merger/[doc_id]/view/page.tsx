@@ -1,19 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { getDocMeta, DocMeta } from "@/libs/doc_manage/getDocMeta";
 import { getDocText } from "@/libs/doc_manage/getDocText";
 import { checkHasPdf } from "@/libs/doc_manage/getDocOriginal";
-import { getDocOriginalPreview, PreviewFile } from "@/libs/doc_manage/getOriginalPreview";
-import { getDocStatus, DocStatusResponse } from "@/libs/doc_manage/getDocStatus";
+import {
+  getDocOriginalPreview,
+  PreviewFile,
+} from "@/libs/doc_manage/getOriginalPreview";
+import {
+  getDocStatus,
+  DocStatusResponse,
+} from "@/libs/doc_manage/getDocStatus";
 import { saveDocText } from "@/libs/doc_manage/updateDocument";
-import { deleteDocument } from "@/libs/doc_manage/deleteDoc"; // <-- เพิ่ม
+import { deleteDocument } from "@/libs/doc_manage/deleteDoc";
+
+import Toast from "@/components/Toast";
+import OCRProgress from "@/components/OcrProgress";
 
 type ViewMode = "pdf" | "text";
 
 export default function ViewDocumentPage() {
   const params = useParams<{ doc_id: string }>();
+  const router = useRouter();
   const docId = params?.doc_id;
 
   const [meta, setMeta] = useState<DocMeta | null>(null);
@@ -22,52 +32,56 @@ export default function ViewDocumentPage() {
   const [draft, setDraft] = useState("");
   const [hasPdf, setHasPdf] = useState(true);
   const [mode, setMode] = useState<ViewMode>("pdf");
-  const [status, setStatus] = useState<string>("queued");
+
+  const [status, setStatus] = useState("queued");
   const [page, setPage] = useState<number | null>(null);
   const [totalPages, setTotalPages] = useState<number | null>(null);
-  const [message, setMessage] = useState<string | undefined>();
+
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<PreviewFile | null>(null);
 
-function isoToThaiDate(value?: string) {
-  if (!value) return "";
-  const monthMap: Record<string, string> = {
-    "01": "ม.ค.",
-    "02": "ก.พ.",
-    "03": "มี.ค.",
-    "04": "เม.ย.",
-    "05": "พ.ค.",
-    "06": "มิ.ย.",
-    "07": "ก.ค.",
-    "08": "ส.ค.",
-    "09": "ก.ย.",
-    "10": "ต.ค.",
-    "11": "พ.ย.",
-    "12": "ธ.ค.",
-  };
-  let yyyy = "";
-  let mm = "";
-  let dd = "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    [yyyy, mm, dd] = value.split("-");
+  const [toast, setToast] = useState<string | null>(null);
+
+  const canViewText = text !== null;
+
+  function isoToThaiDate(value?: string) {
+    if (!value) return "";
+
+    const monthMap: Record<string, string> = {
+      "01": "ม.ค.",
+      "02": "ก.พ.",
+      "03": "มี.ค.",
+      "04": "เม.ย.",
+      "05": "พ.ค.",
+      "06": "มิ.ย.",
+      "07": "ก.ค.",
+      "08": "ส.ค.",
+      "09": "ก.ย.",
+      "10": "ต.ค.",
+      "11": "พ.ย.",
+      "12": "ธ.ค.",
+    };
+
+    let yyyy = "";
+    let mm = "";
+    let dd = "";
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      [yyyy, mm, dd] = value.split("-");
+    } else if (/^\d{8}$/.test(value)) {
+      yyyy = value.slice(0, 4);
+      mm = value.slice(4, 6);
+      dd = value.slice(6, 8);
+    } else {
+      return "";
+    }
+
+    return `${dd} ${monthMap[mm]} พ.ศ. ${yyyy}`;
   }
-  else if (/^\d{8}$/.test(value)) {
-    yyyy = value.slice(0, 4);
-    mm = value.slice(4, 6);
-    dd = value.slice(6, 8);
-  } else {
-    return "";
-  }
-  const monthThai = monthMap[mm];
-  if (!monthThai) return "";
-  return `${dd} ${monthThai} พ.ศ. ${yyyy}`;
-}
 
-
-
-
+  /* ---------- load ---------- */
   useEffect(() => {
     if (!docId) return;
 
@@ -89,6 +103,7 @@ function isoToThaiDate(value?: string) {
       .catch(() => setText(null));
   }, [docId]);
 
+  /* ---------- preview ---------- */
   useEffect(() => {
     if (!docId || !hasPdf || mode !== "pdf") return;
 
@@ -105,6 +120,7 @@ function isoToThaiDate(value?: string) {
     };
   }, [currentFile]);
 
+  /* ---------- OCR polling ---------- */
   useEffect(() => {
     if (!docId) return;
     if (status === "done" || status === "merged") return;
@@ -118,7 +134,6 @@ function isoToThaiDate(value?: string) {
         setStatus(res.status);
         setPage(res.current_page ?? null);
         setTotalPages(res.total_pages ?? null);
-        setMessage(res.message);
 
         if (res.status === "done" || res.status === "merged") {
           const t = await getDocText(docId);
@@ -129,7 +144,7 @@ function isoToThaiDate(value?: string) {
 
         timer = setTimeout(poll, 3000);
       } catch {
-        setError("ไม่พบเอกสารนี้ในระบบ");
+        setError("ไม่สามารถตรวจสอบสถานะ OCR ได้");
       }
     };
 
@@ -137,8 +152,10 @@ function isoToThaiDate(value?: string) {
     return () => clearTimeout(timer);
   }, [docId, status]);
 
+  /* ---------- save ---------- */
   const onSave = async () => {
     if (!docId || !editMeta) return;
+
     setSaving(true);
     setError(null);
 
@@ -146,15 +163,17 @@ function isoToThaiDate(value?: string) {
       await saveDocText(docId, {
         content: draft,
         title: editMeta.title,
-        version: editMeta.version ?? undefined,
-        valid_from: editMeta.valid_from,
         type: editMeta.type,
-        valid_until: editMeta.valid_until ?? undefined,
+        announce_date: editMeta.announce_date,
+        effective_date: editMeta.effective_date ?? undefined,
       });
 
       setMeta(editMeta);
       setText(draft);
       setEditing(false);
+      setToast("บันทึกเอกสารเรียบร้อย");
+
+      window.dispatchEvent(new Event("documents:updated"));
     } catch {
       setError("บันทึกข้อมูลไม่สำเร็จ");
     } finally {
@@ -162,18 +181,19 @@ function isoToThaiDate(value?: string) {
     }
   };
 
+  /* ---------- delete ---------- */
   const onDelete = async () => {
     if (!docId) return;
     if (!confirm("ยืนยันการลบเอกสารนี้?")) return;
 
     try {
       await deleteDocument(docId);
-      setMeta(null);
-      setEditMeta(null);
-      setText(null);
-      setDraft("");
-      setCurrentFile(null);
-      setStatus("deleted");
+      window.dispatchEvent(new Event("documents:updated"));
+      setToast("ลบเอกสารแล้ว");
+
+      setTimeout(() => {
+        router.push("/merger");
+      }, 1200);
     } catch {
       setError("ลบเอกสารไม่สำเร็จ");
     }
@@ -183,8 +203,10 @@ function isoToThaiDate(value?: string) {
     return <div className="p-6 text-red-500">Document ID not found</div>;
   }
 
+  /* ================= UI ================= */
   return (
     <div className="flex h-full flex-col p-4 md:p-6">
+      {/* ===== Header ===== */}
       <div className="border-b bg-white px-6 py-4 space-y-2">
         {editing ? (
           <input
@@ -210,26 +232,24 @@ function isoToThaiDate(value?: string) {
                   }
                 />
                 <input
+                  type="date"
                   className="border rounded px-2"
-                  value={editMeta?.version ?? ""}
+                  value={editMeta?.announce_date ?? ""}
                   onChange={(e) =>
-                    setEditMeta((m) => m && { ...m, version: e.target.value })
+                    setEditMeta(
+                      (m) => m && { ...m, announce_date: e.target.value }
+                    )
                   }
                 />
                 <input
                   type="date"
                   className="border rounded px-2"
-                  value={editMeta?.valid_from ?? ""}
+                  value={editMeta?.effective_date ?? ""}
                   onChange={(e) =>
-                    setEditMeta((m) => m && { ...m, valid_from: e.target.value })
-                  }
-                />
-                <input
-                  type="date"
-                  className="border rounded px-2"
-                  value={editMeta?.valid_until ?? ""}
-                  onChange={(e) =>
-                    setEditMeta((m) => m && { ...m, valid_until: e.target.value })
+                    setEditMeta(
+                      (m) =>
+                        m && { ...m, effective_date: e.target.value }
+                    )
                   }
                 />
               </>
@@ -237,11 +257,11 @@ function isoToThaiDate(value?: string) {
               <>
                 {meta.type && <span>ประเภท {meta.type}</span>}
                 {meta.version && <span>ฉบับที่ {meta.version}</span>}
-                {meta.valid_from && (
-                  <span>ใช้ตั้งแต่ {isoToThaiDate(meta.valid_from)}</span>
+                {meta.announce_date && (
+                  <span>ประกาศ {isoToThaiDate(meta.announce_date)}</span>
                 )}
-                {meta.valid_until && (
-                  <span>ถึง {isoToThaiDate(meta.valid_until)}</span>
+                {meta.effective_date && (
+                  <span>มีผลใช้ {isoToThaiDate(meta.effective_date)}</span>
                 )}
               </>
             )}
@@ -275,7 +295,7 @@ function isoToThaiDate(value?: string) {
 
           <div className="flex gap-2">
             {mode === "text" &&
-              (status === "done" || status === "merged") &&
+              canViewText &&
               (!editing ? (
                 <button
                   onClick={() => {
@@ -318,6 +338,7 @@ function isoToThaiDate(value?: string) {
         </div>
       </div>
 
+      {/* ===== Content ===== */}
       <div className="flex-1 overflow-hidden bg-gray-50">
         {mode === "pdf" && hasPdf && (
           <iframe
@@ -328,18 +349,18 @@ function isoToThaiDate(value?: string) {
 
         {mode === "text" && (
           <div className="h-full overflow-auto p-6 bg-white space-y-4">
-            {status !== "done" && status !== "merged" && (
+            {!canViewText && (
               <OCRProgress
                 status={status}
                 page={page}
                 totalPages={totalPages}
-                message={message}
+                message="กำลังประมวลผล…"
               />
             )}
 
             {error && <p className="text-sm text-red-500">{error}</p>}
 
-            {(status === "done" || status === "merged") &&
+            {canViewText &&
               (editing ? (
                 <textarea
                   value={draft}
@@ -352,36 +373,12 @@ function isoToThaiDate(value?: string) {
           </div>
         )}
       </div>
-    </div>
-  );
-}
 
-function OCRProgress({
-  status,
-  page,
-  totalPages,
-  message,
-}: {
-  status: string;
-  page: number | null;
-  totalPages: number | null;
-  message?: string;
-}) {
-  const percent =
-    page && totalPages ? Math.round((page / totalPages) * 100) : 0;
-
-  return (
-    <div className="max-w-md space-y-2">
-      <p className="text-sm text-gray-600">
-        {message}
-        {page && totalPages && <> • หน้า {page}/{totalPages}</>}
-      </p>
-      <div className="h-2 w-full rounded bg-gray-200">
-        <div
-          className="h-full bg-blue-500 transition-all"
-          style={{ width: `${percent}%` }}
-        />
-      </div>
+      <Toast
+        show={!!toast}
+        message={toast ?? ""}
+        onClose={() => setToast(null)}
+      />
     </div>
   );
 }

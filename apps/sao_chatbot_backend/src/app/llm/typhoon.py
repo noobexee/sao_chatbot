@@ -1,4 +1,3 @@
-import os
 from langchain_openai import ChatOpenAI
 from src.config import settings
 from src.app.llm.base import BaseLLM

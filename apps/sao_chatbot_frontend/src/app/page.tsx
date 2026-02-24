@@ -34,7 +34,7 @@ export default function Home() {
         </div>
 
         <div className="pt-12">
-          <Link href="/chatbot"> 
+          <Link href="/auth"> 
             <button className="cursor-pointer truncate group relative flex items-center justify-center rounded-full border border-gray-200 bg-white px-16 py-4 text-[#a83b3b] shadow-[0_4px_14px_0_rgba(0,0,0,0.05)] transition-all hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(0,0,0,0.1)] active:translate-y-0">
               <span className="text-lg font-medium">ลงชื่อเข้าใช้</span>
             </button>

@@ -3,12 +3,13 @@ from typing import List, Tuple, Optional, Dict
 from src.db.connection import get_db_connection
 
 class ChatRepository:
-    def save_message(self, user_id: int, session_id: str, user_msg: str, ai_msg: str, context: list = None):
+    def save_message(self, user_id: str, session_id: str, user_msg: str, ai_msg: str, context: list = None):
         conn = None
         try:
             conn = get_db_connection()
             conn.autocommit = True
             cur = conn.cursor()
+            print(context)
             
             query = """
                 INSERT INTO conversations 
@@ -29,7 +30,7 @@ class ChatRepository:
         finally:
             if conn: conn.close()
 
-    def get_messages_by_session(self, user_id: int, session_id: str) -> List[Tuple]:
+    def get_messages_by_session(self, user_id: str, session_id: str) -> List[Tuple]:
         """
         Fetches raw rows (user_msg, ai_msg, created_at) for a specific session.
         """
@@ -54,7 +55,7 @@ class ChatRepository:
         finally:
             if conn: conn.close()
 
-    def get_user_sessions_summary(self, user_id: int) -> List[Dict]:
+    def get_user_sessions_summary(self, user_id: str) -> List[Dict]:
         """
         Fetches unique sessions for the sidebar list, including metadata (Rename/Pin).
         """
@@ -98,7 +99,7 @@ class ChatRepository:
         finally:
             if conn: conn.close()
 
-    def delete_session(self, user_id: int, session_id: str) -> bool:
+    def delete_session(self, user_id: str, session_id: str) -> bool:
         conn = None
         try:
             conn = get_db_connection()
@@ -118,7 +119,7 @@ class ChatRepository:
         finally:
             if conn: conn.close()
 
-    def update_session_metadata(self, user_id: int, session_id: str, title: Optional[str] = None, is_pinned: Optional[bool] = None) -> bool:
+    def update_session_metadata(self, user_id: str, session_id: str, title: Optional[str] = None, is_pinned: Optional[bool] = None) -> bool:
         """
         Updates metadata for ALL rows in a session to keep them consistent.
         """

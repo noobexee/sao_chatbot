@@ -9,8 +9,8 @@ __pycache__/
 .env
 .env.*
 
-
-/vector_store/
+/storage/others/*
+/storage/regulations/*
 
 .DS_Store
 .AppleDouble
@@ -26,3 +26,6 @@ desktop.ini
 *.swo
 
 data/
+
+test.ipynb
+test/*

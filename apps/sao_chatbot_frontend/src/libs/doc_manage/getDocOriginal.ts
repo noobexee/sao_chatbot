@@ -3,7 +3,7 @@ import { getBaseUrl } from "../config";
 export async function checkHasPdf(docId: string): Promise<boolean> {
   try {
     const res = await fetch(
-      `${getBaseUrl()}/api/v1/merger/doc/${docId}/original`
+      `${getBaseUrl()}/api/v1/merger/doc/${docId}/original`,
     );
     return res.ok;
   } catch {

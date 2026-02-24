@@ -1,43 +1,88 @@
 import { getBaseUrl } from "../config";
 
 export interface UploadPayload {
-  type: string;
+  doc_type: string;
   title?: string;
-  version?: string;
-  valid_from?: string;  // DD-MM-YYYY or ISO (backend decides)
-  valid_until?: string;
-  file: File;
+  announce_date: string;    // ISO or DD-MM-YYYY
+  effective_date: string;   // ISO or DD-MM-YYYY
+  is_first_version: boolean;
+
+  previous_doc_id?: string; // 👈 NEW: used when not first version
+
+  main_file: File;          // mandatory PDF
+  related_files?: File[];   // optional
 }
 
 export interface UploadResponse {
   id: string;
-  type: string;
   title: string;
-  version: string | null;
-  message: string;
-  status_endpoint: string;
-  text_endpoint: string;
+  version: number;
+  related_form_id?: string[] | null;
 }
 
 export async function uploadDocument(
   payload: UploadPayload,
   signal?: AbortSignal
 ): Promise<UploadResponse> {
+  // ---------- validations ----------
+  if (!payload.main_file) {
+    throw new Error("Main PDF file is required");
+  }
+
+  if (
+    payload.main_file.type !== "application/pdf" &&
+    !payload.main_file.name.toLowerCase().endsWith(".pdf")
+  ) {
+    throw new Error("Main file must be a PDF");
+  }
+
+  if (payload.related_files?.length) {
+    for (const f of payload.related_files) {
+      if (!f.name) {
+        throw new Error("Invalid related file detected");
+      }
+    }
+  }
+
+  // ---------- build form ----------
   const formData = new FormData();
+  formData.append("doc_type", payload.doc_type);
 
-  formData.append("type", payload.type);
-  if (payload.title) formData.append("title", payload.title);
-  if (payload.version) formData.append("version", payload.version);
-  if (payload.valid_from) formData.append("valid_from", payload.valid_from);
-  if (payload.valid_until) formData.append("valid_until", payload.valid_until);
-  formData.append("file", payload.file);
+  if (payload.title?.trim()) {
+    formData.append("title", payload.title.trim());
+  }
 
-  const res = await fetch(`${getBaseUrl()}/api/v1/merger/doc`, {
-    method: "POST",
-    body: formData,
-    cache: "no-store",
-    signal,
+  formData.append("announce_date", payload.announce_date);
+  formData.append("effective_date", payload.effective_date);
+  formData.append(
+    "is_first_version",
+    String(payload.is_first_version)
+  );
+
+  if (payload.previous_doc_id) {
+    formData.append(
+      "previous_doc_id",
+      payload.previous_doc_id
+    );
+  }
+
+  formData.append("main_file", payload.main_file);
+
+  payload.related_files?.forEach((file) => {
+    formData.append("related_files", file);
   });
+
+  // ---------- request ----------
+  const res = await fetch(
+    `${getBaseUrl()}/api/v1/merger/doc`,
+    {
+      method: "POST",
+      body: formData,
+      cache: "no-store",
+      signal,
+    }
+  );
+
   if (!res.ok) {
     let message = "Upload failed";
     try {
@@ -48,5 +93,6 @@ export async function uploadDocument(
     }
     throw new Error(message);
   }
+
   return res.json();
 }
