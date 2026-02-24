@@ -4,8 +4,11 @@ import { getBaseUrl } from "../config";
 export interface AnalyzeResponse {
     status: string;
     data: {
-        step4: any; // Define detailed interface if needed
-        step6: any;
+        criteria1: any;
+        criteria2: any; 
+        criteria4: any; 
+        criteria6: any;
+        criteria8: any;
         raw_text?: string;
     };
     message?: string;
@@ -17,7 +20,7 @@ export async function analyzeDocument(file: File): Promise<AnalyzeResponse> {
     formData.append("file", file);
 
     try {
-        const response = await fetch(`${baseUrl}/api/v1/audit/analyze`, {
+        const response = await fetch(`${baseUrl}/api/v1/InitialReview/analyze`, {
             method: "POST",
             body: formData,
         });

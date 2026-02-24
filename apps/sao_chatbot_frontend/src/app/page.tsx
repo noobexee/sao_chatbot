@@ -1,17 +1,18 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Kanit } from "next/font/google";
+import { Sarabun } from 'next/font/google';
 
-const kanit = Kanit({
-  subsets: ["thai", "latin"],
-  weight: ["300", "400", "500", "600"],
-  variable: "--font-kanit",
+const sarabun = Sarabun({
+  weight: ['100', '200', '300', '400', '500', '600', '700', '800'],
+  subsets: ['thai', 'latin'],
+  variable: '--font-th-sarabun',
+  display: 'swap',
 });
 
 export default function Home() {
   return (
     <main
-      className={`flex min-h-screen flex-col items-center justify-center bg-white p-4 ${kanit.className}`}>
+      className={`flex min-h-screen flex-col items-center justify-center bg-white p-4 ${sarabun.className}`}>
       <div className="flex flex-col items-center space-y-8 text-center">
         <div className="relative mb-4">
           <Image
