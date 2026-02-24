@@ -5,7 +5,6 @@ class ChatRequest(BaseModel):
     """
     Payload sent when a user sends a new message via POST /chat.
     """
-    user_id: int
     session_id: str
     query: str
 

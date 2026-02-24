@@ -9,7 +9,8 @@ __pycache__/
 .env
 .env.*
 
-/storage/*
+/storage/others/*
+/storage/regulations/*
 
 .DS_Store
 .AppleDouble

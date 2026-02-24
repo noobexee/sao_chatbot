@@ -1,5 +1,6 @@
 import sys
 import os
+from dotenv import load_dotenv
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -41,6 +42,7 @@ def drop_all_tables():
             conn.close()
 
 if __name__ == "__main__":
+    load_dotenv()
     confirmation = input("Type 'DELETE' to confirm you want to wipe the database: ")
     if confirmation == "DELETE":
         drop_all_tables()

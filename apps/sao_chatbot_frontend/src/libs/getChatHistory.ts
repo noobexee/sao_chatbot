@@ -1,17 +1,19 @@
 import { getBaseUrl } from "./config";
 
-export default async function getChatHistory(user_id: string, session_id: string) {
-  const baseUrl = getBaseUrl()
-  const url = `${baseUrl}/api/v1/chatbot/history/${user_id}/${session_id}`;
-  
-  console.log(`Fetching history from: ${url}`);
+export default async function getChatHistory(session_id: string) {
+  const baseUrl = getBaseUrl();
+  const token = localStorage.getItem("token");
+
+  const url = `${baseUrl}/api/v1/chatbot/history/${session_id}`;
 
   const response = await fetch(url, {
     cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
   });
-
+  
   if (!response.ok) {
-   
     return { success: true, data: { messages: [] } };
   }
 
