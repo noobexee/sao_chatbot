@@ -1,25 +1,56 @@
+"use client";
+
+import { use, useEffect, useState } from "react";
 import getChatHistory from "@/libs/getChatHistory";
 import ChatWindow from "@/components/ChatWindow";
 
-// 1. Define params as a Promise (Required for Next.js 15)
 interface PageProps {
   params: Promise<{
-    sessionId: string; 
+    sessionId: string;
   }>;
 }
 
-export default async function SpecificChatPage({ params }: PageProps) {
-  const userId = "1";
+export default function SpecificChatPage({ params }: PageProps) {
+  const { sessionId } = use(params);
 
-  const { sessionId } = await params;
-  const historyData = await getChatHistory(userId, sessionId);
-  const messages = historyData?.data?.messages || [];
+  const [messages, setMessages] = useState<any[]>([]);
+
+  function parseJwt(token: string) {
+    try {
+      const base64 = token.split(".")[1];
+      return JSON.parse(atob(base64));
+    } catch {
+      return null;
+    }
+  }
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      throw new Error("Unauthorized");
+    }
+
+    const payload = parseJwt(token);
+    const uid = payload?.sub;
+
+    if (!uid) {
+      throw new Error("Invalid token");
+    }
+
+    const fetchData = async () => {
+      const historyData = await getChatHistory(sessionId);
+      const msgs = historyData?.data?.messages || [];
+      setMessages(msgs);
+    };
+
+    fetchData();
+  }, [sessionId]);
 
   return (
-    <ChatWindow 
-      initialMessages={messages} 
-      sessionId={sessionId} 
-      userId={userId} 
+    <ChatWindow
+      initialMessages={messages}
+      sessionId={sessionId}
     />
   );
 }
