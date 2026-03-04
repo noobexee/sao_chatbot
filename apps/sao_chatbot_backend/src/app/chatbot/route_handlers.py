@@ -202,7 +202,11 @@ async def handle_legal_rag(query: str, history: list, llm:Any, retriever:Retriev
         4. Precise Referencing: If a sub-clause points to another sub-clause (e.g., "ตาม (1)"), ensure you refer to it as the full clause name (e.g., "ข้อ 26 (1)").
 
         ### INSTRUCTIONS FOR 'used_law_names'
-        - List ONLY titles cited in the 'answer_text'. Accuracy is mandatory.
+        1. List the legal citations used in 'answer_text' exactly as they appear in the REFERENCE_LABEL.
+        2. STRICT FORMATTING RULES:
+        - If the document is a 'ระเบียบ': Use "ข้อ [เลขข้อ] [ชื่อระเบียบ]" (e.g., ข้อ 5 ระเบียบสำนักงานตรวจเงินแผ่นดิน).
+        - For all other types (คำสั่ง, แนวทาง, มาตรฐาน): Use ONLY the law name (e.g., คำสั่งสำนักงานตรวจเงินแผ่นดิน ที่ 1/2566).
+        3. Do not add any text or bolding inside the JSON array.
 
         {format_instructions}
 

@@ -1,6 +1,6 @@
 from datetime import date
 from src.app.utils.chunking import chunk_by_clause
-from src.app.utils.embedding import BGEEmbedder
+from src.app.utils.embedding import BGEEmbedder, global_embedder
 from src.app.utils.preprocess_dataset import (
     delete_document_pipeline,
     index_single_json_file,
@@ -12,7 +12,7 @@ from src.app.document.documentSchemas import DocumentMeta
 
 class DocumentUpdater:
     def __init__(self):
-        self.embedder = BGEEmbedder()
+        self.embedder = global_embedder
 
     # ---------- Create ----------
 
