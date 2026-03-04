@@ -67,7 +67,7 @@ export default function MergerLayout({
     if (!docs.length) return;
 
     const active = docs.filter(
-      (d) => d.status && d.status !== "done" && d.status !== "merged"
+      (d) => d.status && d.status !== "done" && d.status !== "merged" && d.status !== "need_attention"
     );
 
     if (!active.length) return;

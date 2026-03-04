@@ -18,6 +18,7 @@ import { deleteDocument } from "@/libs/doc_manage/deleteDoc";
 
 import Toast from "@/components/Toast";
 import OCRProgress from "@/components/OcrProgress";
+import { getRelatedDoc, RelatedFile } from "@/libs/doc_manage/getRelatedFiles";
 
 type ViewMode = "pdf" | "text";
 
@@ -43,6 +44,7 @@ export default function ViewDocumentPage() {
   const [currentFile, setCurrentFile] = useState<PreviewFile | null>(null);
 
   const [toast, setToast] = useState<string | null>(null);
+  const [relatedFiles, setRelatedFiles] = useState<RelatedFile[]>([]);
 
   const canViewText = text !== null;
 
@@ -101,6 +103,8 @@ export default function ViewDocumentPage() {
         setDraft(t);
       })
       .catch(() => setText(null));
+
+    getRelatedDoc(docId).then(setRelatedFiles).catch(() => setRelatedFiles([]));
   }, [docId]);
 
   /* ---------- preview ---------- */
@@ -123,7 +127,7 @@ export default function ViewDocumentPage() {
   /* ---------- OCR polling ---------- */
   useEffect(() => {
     if (!docId) return;
-    if (status === "done" || status === "merged") return;
+    if (status === "done" || status === "merged" || status === "need_attention") return;
 
     let timer: NodeJS.Timeout;
 
@@ -135,7 +139,7 @@ export default function ViewDocumentPage() {
         setPage(res.current_page ?? null);
         setTotalPages(res.total_pages ?? null);
 
-        if (res.status === "done" || res.status === "merged") {
+        if (res.status === "done" || res.status === "merged" || res.status === "need_attention") {
           const t = await getDocText(docId);
           setText(t);
           setDraft(t);
@@ -197,6 +201,26 @@ export default function ViewDocumentPage() {
     } catch {
       setError("ลบเอกสารไม่สำเร็จ");
     }
+  };
+
+  const downloadFile = (file: RelatedFile) => {
+    const byteCharacters = atob(file.file_data);
+    const byteNumbers = new Array(byteCharacters.length);
+
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray]);
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.file_name;
+    a.click();
+
+    URL.revokeObjectURL(url);
   };
 
   if (!docId) {
@@ -337,6 +361,25 @@ export default function ViewDocumentPage() {
           </div>
         </div>
       </div>
+
+      {/* ===== Related Files ===== */}
+      {relatedFiles.length > 0 && (
+        <div className="px-6 py-3 bg-white border-b space-y-2">
+          <div className="text-xs text-gray-500">ไฟล์ที่เกี่ยวข้อง</div>
+
+          <div className="flex flex-wrap gap-2">
+            {relatedFiles.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => downloadFile(f)}
+                className="text-xs px-3 py-1 rounded bg-gray-100 hover:bg-gray-200"
+              >
+                {f.file_name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ===== Content ===== */}
       <div className="flex-1 overflow-hidden bg-gray-50">
