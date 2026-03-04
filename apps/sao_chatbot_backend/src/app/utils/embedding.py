@@ -111,3 +111,5 @@ class BGEEmbedder:
             Embedding dimension (1024 for BGE-M3)
         """
         return self._embedding_dimension
+    
+global_embedder = BGEEmbedder()
