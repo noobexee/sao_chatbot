@@ -3,6 +3,8 @@ import { getBaseUrl } from "../config";
 // You might want to define stricter types for the AI result here
 export interface AnalyzeResponse {
     status: string;
+    session_id?: string;
+    user_id?: string;
     data: {
         criteria1: any;
         criteria2: any; 
@@ -14,10 +16,11 @@ export interface AnalyzeResponse {
     message?: string;
 }
 
-export async function analyzeDocument(file: File): Promise<AnalyzeResponse> {
+export async function analyzeDocument(file: File, user_id: string): Promise<AnalyzeResponse> {
     const baseUrl = getBaseUrl();
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("user_id", user_id);
 
     try {
         const response = await fetch(`${baseUrl}/api/v1/InitialReview/analyze`, {
