@@ -64,7 +64,6 @@ class ChatRepository:
             conn = get_db_connection()
             cur = conn.cursor()
             
-            # CRITICAL FIX: Select custom_title and is_pinned
             query = """
                 SELECT DISTINCT ON (session_id) 
                     session_id, 
@@ -78,7 +77,6 @@ class ChatRepository:
             cur.execute(query, (user_id,))
             rows = cur.fetchall()
             
-            # Convert to Dictionary for Frontend
             results = []
             for row in rows:
                 results.append({
@@ -88,7 +86,6 @@ class ChatRepository:
                     "is_pinned": row[3]
                 })
             
-            # Sort: Pinned first (True), then Newest first
             results.sort(key=lambda x: (x['is_pinned'], x['created_at']), reverse=True)
             
             cur.close()
