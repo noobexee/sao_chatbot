@@ -11,7 +11,6 @@ class InitialReviewAgents:
         try:
             full_prompt = f"{system_prompt}\n\nเอกสารที่ต้องตรวจสอบ:\n{user_text}"
             
-            # ChatOpenAI.invoke returns an AIMessage object
             response = client.invoke(full_prompt)
             
             content = response.content
@@ -19,7 +18,6 @@ class InitialReviewAgents:
                 print("⚠️ Typhoon returned empty content.")
                 return None
 
-            # Clean Markdown code blocks (```json ... ```) if present
             if "```" in content:
                 content = re.sub(r"^```json\s*", "", content, flags=re.MULTILINE)
                 content = re.sub(r"^```\s*", "", content, flags=re.MULTILINE)
@@ -29,9 +27,6 @@ class InitialReviewAgents:
 
         except Exception as e:
             print(f"Typhoon Error: {e}")
-            # If response variable exists, print it for debugging
-            # if 'response' in locals():
-            #     print(f"Raw Response: {response}") 
             return None
         
     # --- AGENT 1: Criteria 2 (SAO Authority Check) ---
@@ -162,13 +157,11 @@ class InitialReviewAgents:
     
     # --- AGENT 4: criteria 8 (Other Independent Organizations) --- 
     def agent_criteria8_other_authority(self, text, criteria2_result=None):
-        # 1. Prepare Context from Criteria 2 (Smart Context Injection)
         context_instruction = ""
         
         if criteria2_result:
             c2_status = criteria2_result.get("result", "")
             if c2_status == "เป็น":
-                # กรณี Criteria 2 บอกว่าเป็น สตง. -> ให้ Criteria 8 เช็คว่ามี Overlap ที่ต้องไปที่อื่นไหม
                 context_instruction = """
                 **บริบทเพิ่มเติมจาก AI (Criteria 2):** วิเคราะห์แล้วว่าเรื่องนี้ "อยู่ในอำนาจ สตง." (เกี่ยวกับเงิน/พัสดุ)
                 **คำสั่งเฉพาะ:** ให้ตรวจสอบซ้ำว่ามีประเด็นทับซ้อนที่รุนแรงจน **ต้อง** ส่งต่อองค์กรอื่นหรือไม่ (เช่น มีการรับสินบนชัดเจน หรือ ร่ำรวยผิดปกติ ซึ่งต้องไป ป.ป.ช.)
@@ -176,7 +169,6 @@ class InitialReviewAgents:
                 - หากพบประเด็นทับซ้อนที่น้ำหนักไปทางองค์กรอื่นมากกว่า -> ให้เปลี่ยนเป็น "เป็น" พร้อมระบุองค์กร
                 """
             elif c2_status == "ไม่เป็น":
-                # กรณี Criteria 2 บอกว่า ไม่เป็น สตง. -> Criteria 8 ต้องหาเจ้าภาพให้เจอ
                 context_instruction = """
                 **บริบทเพิ่มเติมจาก AI (Criteria 2):** วิเคราะห์แล้วว่าเรื่องนี้ **"ไม่อยู่ในอำนาจ สตง."**
                 **คำสั่งเฉพาะ:** เรื่องนี้มีความเป็นไปได้สูงที่จะเป็นอำนาจขององค์กรอิสระอื่น คุณต้องวิเคราะห์อย่างละเอียดเพื่อระบุว่าควรส่งไปที่ใด (ป.ป.ช., ผู้ตรวจการฯ, กกต., หรือ กสม.)

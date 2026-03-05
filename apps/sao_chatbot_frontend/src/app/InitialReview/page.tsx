@@ -35,14 +35,14 @@ export default function InitialReviewUploadPage() {
         
         <div
           onClick={() => fileInputRef.current?.click()}
-          className="border-4 border-dashed border-gray-300 bg-gray-50 rounded-xl p-16 cursor-pointer hover:border-red-300 hover:bg-red-50 transition-all"
+          className="border-4 border-dashed border-gray-300 bg-gray-50 rounded-xl p-16 cursor-pointer hover:border-blue-300 hover:bg-blue-50 transition-all"
         >
           <input
             type="file"
             ref={fileInputRef}
             className="hidden"
             onChange={(e) => handleFileSelect(e.target.files)}
-            accept=".pdf,.jpg,.png"
+            accept=".pdf,.jpg,.jpeg,.png"
           />
           <div className="text-6xl mb-4">📂</div>
           <p className="text-xl font-semibold text-gray-700">คลิกเพื่ออัปโหลดไฟล์</p>

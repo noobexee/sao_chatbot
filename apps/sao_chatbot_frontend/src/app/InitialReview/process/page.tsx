@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, Suspense } from "react";
-import { useSearchParams, useParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useInitialReview } from "../InitialReview-context";
 
 // --- Import API Functions from Libs ---
@@ -37,22 +37,17 @@ interface criteria4Details {
   location: FieldData;
 }
 
-// ✅ [UPDATED] Interface รองรับ Human-in-the-Loop
+// Interface รองรับ Human-in-the-Loop
 interface AuthorityDetails {
-  // Original AI Data
   aiResult: string;      
   aiReason: string;
   aiOrganization?: string;
-
-  // Final Human Data
   finalResult: string;   
   finalReason: string;   
-  finalOrganization?: string; // สำหรับ Criteria 8
-
-  // Meta Data
+  finalOrganization?: string; 
   evidence?: string; 
-  isVerified: boolean;   // มนุษย์กดยืนยันแล้วหรือยัง
-  isOverridden: boolean; // มีการเปลี่ยนผล Pass/Fail หรือไม่
+  isVerified: boolean;   
+  isOverridden: boolean; 
 }
 
 interface InitialReviewCriteria {
@@ -70,7 +65,7 @@ interface InitialReviewCriteria {
     reason?: string;
     people?: Person[];
     details?: criteria4Details; 
-    authority?: AuthorityDetails; // ✅ Uses updated interface
+    authority?: AuthorityDetails; 
   };
 }
 
@@ -85,7 +80,6 @@ const initialCriterias: InitialReviewCriteria[] = [
   { id: 8, label: "8. เป็นเรื่องร้องเรียนที่อยู่ในอำนาจหน้าที่ขององค์กรอิสระอื่น", type: "auto", status: "neutral" },
 ];
 
-// List องค์กรอิสระสำหรับ Criteria 8 (Human Selectable)
 const INDEPENDENT_ORGS = [
     "ไม่ระบุ / ไม่ทราบ",
     "คณะกรรมการป้องกันและปราบปรามการทุจริตแห่งชาติ (ป.ป.ช.)",
@@ -96,28 +90,24 @@ const INDEPENDENT_ORGS = [
     "คณะกรรมการสิทธิมนุษยชนแห่งชาติ (กสม.)"
 ];
 
-function InitialReviewContent() {
-  const params = useParams(); 
+function InitialReviewProcessContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { currentFile } = useInitialReview();
 
-  const pathInitialReviewId = params?.InitialReviewId as string;
-  const InitialReviewId = (pathInitialReviewId && pathInitialReviewId !== 'new-project') 
-    ? pathInitialReviewId 
-    : searchParams.get('id');
+  // 🟢 NEW: State จัดการ Session และ User
+  const [sessionId, setSessionId] = useState<string | null>(searchParams.get('session_id'));
+  const [userId, setUserId] = useState<string>("test_user_001"); // จำลองชื่อผู้ใช้
 
   // --- State ---
-  const [isLoadingFile, setIsLoadingFile] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
   const [criterias, setCriterias] = useState<InitialReviewCriteria[]>(initialCriterias);
   const [expandedCriteriaIds, setExpandedCriteriaIds] = useState<number[]>([]);
   const [isSaving, setIsSaving] = useState(false); 
   
-  // Edit States for Step 4
+  // Edit States for Step 4 & Authority
   const [editingField, setEditingField] = useState<keyof criteria4Details | null>(null);
   const [tempEditValue, setTempEditValue] = useState("");
-
-  // Edit States for Authority (Step 2 & 8)
   const [editingAuthorityReasonId, setEditingAuthorityReasonId] = useState<number | null>(null);
   const [tempAuthorityReason, setTempAuthorityReason] = useState("");
 
@@ -132,7 +122,16 @@ function InitialReviewContent() {
   const [ocrError, setOcrError] = useState<string | null>(null);
   const processedFileIdRef = React.useRef<string | null>(null);
 
-  // --- 1. OCR Logic (Run Automatically) ---
+  // 🟢 โหลดข้อมูลเก่า (ถ้ามี session_id ใน URL)
+  useEffect(() => {
+      if (sessionId && !docText) {
+          // TODO: ในอนาคตสามารถใส่ Logic ดึงผลการตรวจเก่าจาก backend มาใส่ State ได้
+          console.log(`[INFO] กำลังเปิด Session เก่า: ${sessionId}`);
+          setShowChecklist(true); // เปิดแถบขวาเตรียมไว้
+      }
+  }, [sessionId]);
+
+  // --- 1. OCR Logic ---
   useEffect(() => {
     const runOCR = async () => {
         if (!currentFile?.fileObj) return;
@@ -145,14 +144,11 @@ function InitialReviewContent() {
         setOcrError(null);
         
         try {
-            console.log(`🚀 Calling ocrDocument for: ${currentFile.name}`);
             const result = await ocrDocument(currentFile.fileObj);
-            
             setDocText(result.text);
             setDraftText(result.text);
             setViewMode("text");
         } catch (err: any) {
-            console.error("OCR Error:", err);
             setOcrError(err.message || "Failed to extract text");
         } finally {
             setIsOCRLoading(false);
@@ -177,36 +173,26 @@ function InitialReviewContent() {
         const blob = new Blob([draftText], { type: "text/plain" });
         const fileToAnalyze = new File([blob], `${currentFile?.name || 'doc'}_edited.txt`, { type: "text/plain" });
 
-        const result = await analyzeDocument(fileToAnalyze);
+        // ส่งไฟล์ไปวิเคราะห์ (API ควรส่ง user_id ไปด้วย ถ้า backend ต้องการ)
+        const result = await analyzeDocument(fileToAnalyze,userId);
 
         if (result.status === "success" || result.data) {
+            // 🟢 อัปเดต Session ID ที่เพิ่งได้มาจาก Backend
+            if (result.session_id) {
+                setSessionId(result.session_id);
+                // อัปเดต URL เงียบๆ เพื่อให้กด Refresh แล้วไม่หาย
+                router.replace(`/InitialReview/process?session_id=${result.session_id}`);
+            }
+
             const { criteria2, criteria4, criteria6, criteria8 } = result.data;
 
             setCriterias(prev => prev.map(c => {
-                // ✅ Criteria 2: อำนาจหน้าที่ สตง. (HITL Init)
+                // Criteria 2: อำนาจหน้าที่ สตง. (HITL Init)
                 if (c.id === 2 && criteria2) {
-                    return {
-                        ...c,
-                        isProcessing: false,
-                        status: criteria2.status, // Initial status based on AI
-                        ocrResult: {
-                            status: criteria2.status,
-                            title: criteria2.title,
-                            reason: criteria2.reason,
-                            authority: {
-                                aiResult: criteria2.result,
-                                aiReason: criteria2.reason,
-                                finalResult: criteria2.result, // Default to AI
-                                finalReason: criteria2.reason, // Default to AI
-                                evidence: criteria2.evidence,
-                                isVerified: false,
-                                isOverridden: false
-                            }
-                        }
-                    };
+                    return { ...c, isProcessing: false, status: criteria2.status, ocrResult: { status: criteria2.status, title: criteria2.title, reason: criteria2.reason, authority: { aiResult: criteria2.result, aiReason: criteria2.reason, finalResult: criteria2.result, finalReason: criteria2.reason, evidence: criteria2.evidence, isVerified: false, isOverridden: false } } };
                 }
 
-                // ✅ Criteria 4: Sufficiency
+                // Criteria 4: Sufficiency
                 if (c.id === 4 && criteria4) {
                     const structuredDetails: criteria4Details = {
                         entity: createField(criteria4.details?.entity?.value || criteria4.details?.entity || null),
@@ -218,34 +204,14 @@ function InitialReviewContent() {
                     return { ...c, isProcessing: false, status: criteria4.status, ocrResult: { ...criteria4, details: structuredDetails } };
                 }
 
-                // ✅ Criteria 6: Complainant
+                // Criteria 6: Complainant
                 if (c.id === 6 && criteria6) {
                     return { ...c, isProcessing: false, status: criteria6.status, ocrResult: { status: criteria6.status, title: criteria6.title, reason: criteria6.reason, people: criteria6.people } };
                 }
 
-                // ✅ Criteria 8: อำนาจองค์กรอิสระอื่น (HITL Init)
+                // Criteria 8: อำนาจองค์กรอิสระอื่น (HITL Init)
                 if (c.id === 8 && criteria8) {
-                    return {
-                        ...c,
-                        isProcessing: false,
-                        status: criteria8.status,
-                        ocrResult: {
-                            status: criteria8.status,
-                            title: criteria8.title,
-                            reason: criteria8.reason,
-                            authority: {
-                                aiResult: criteria8.result,
-                                aiReason: criteria8.reason,
-                                aiOrganization: criteria8.organization,
-                                finalResult: criteria8.result, // Default to AI
-                                finalReason: criteria8.reason, // Default to AI
-                                finalOrganization: criteria8.organization || INDEPENDENT_ORGS[0],
-                                evidence: criteria8.evidence,
-                                isVerified: false,
-                                isOverridden: false
-                            }
-                        }
-                    };
+                    return { ...c, isProcessing: false, status: criteria8.status, ocrResult: { status: criteria8.status, title: criteria8.title, reason: criteria8.reason, authority: { aiResult: criteria8.result, aiReason: criteria8.reason, aiOrganization: criteria8.organization, finalResult: criteria8.result, finalReason: criteria8.reason, finalOrganization: criteria8.organization || INDEPENDENT_ORGS[0], evidence: criteria8.evidence, isVerified: false, isOverridden: false } } };
                 }
 
                 return c;
@@ -264,8 +230,8 @@ function InitialReviewContent() {
 
   // --- 3. Save Logic ---
   const handleSaveToDatabase = async () => {
-    if (!InitialReviewId) {
-      alert("Error: InitialReview ID missing.");
+    if (!sessionId) {
+      alert("Error: ไม่มี Session ID กรุณากดปุ่ม Start Analysis ก่อนครับ");
       return;
     }
 
@@ -275,7 +241,7 @@ function InitialReviewContent() {
     );
 
     if (unverified.length > 0) {
-        const confirmSave = window.confirm(`Warning: Criteria ${unverified.map(c => c.id).join(", ")} have NOT been verified by a human. Save anyway?`);
+        const confirmSave = window.confirm(`Warning: Criteria ${unverified.map(c => c.id).join(", ")} ยังไม่ได้กดยืนยันผล (Verified) ยืนยันที่จะบันทึกหรือไม่?`);
         if (!confirmSave) return;
     }
 
@@ -285,12 +251,10 @@ function InitialReviewContent() {
       for (const criteria of criteriasToSave) {
           let resultData = criteria.ocrResult || {};
           
-          // Use FINAL human data for saving
           if ((criteria.id === 2 || criteria.id === 8) && criteria.ocrResult?.authority) {
               const auth = criteria.ocrResult.authority;
               resultData = {
                   ...resultData,
-                  // Overwrite standard fields with Final Human decisions
                   status: criteria.status,
                   reason: auth.finalReason,
                   authority: {
@@ -306,13 +270,16 @@ function InitialReviewContent() {
              resultData = { ...resultData, manual_selection: criteria.selectedOption, status: criteria.status };
           }
 
+          // 🟢 แนบ User ID และ Session ID ไปใน API Request
           await saveAiResult({
-              InitialReview_id: InitialReviewId,
+              user_id: userId,
+              session_id: sessionId,
               criteria_id: criteria.id,
-              result: resultData
+              result: resultData,
+              feedback: criteria.feedback
           });
       }
-      alert(`✅ Saved successfully!`);
+      //alert(`✅ บันทึกสำเร็จ! (Session: ${sessionId})`);
     } catch (error: any) {
       console.error("Save Error:", error);
       alert("Error saving data: " + error.message);
@@ -328,9 +295,9 @@ function InitialReviewContent() {
 
   const toggleExpandAll = () => {
     if (expandedCriteriaIds.length === criterias.length) {
-      setExpandedCriteriaIds([]); // ย่อทั้งหมด
+      setExpandedCriteriaIds([]); 
     } else {
-      setExpandedCriteriaIds(criterias.map(c => c.id)); // ขยายทั้งหมด
+      setExpandedCriteriaIds(criterias.map(c => c.id)); 
     }
   };
 
@@ -355,13 +322,7 @@ function InitialReviewContent() {
   const handleVerifyAuthority = (id: number) => {
     setCriterias(prev => prev.map(c => {
         if (c.id === id && c.ocrResult?.authority) {
-            return {
-                ...c,
-                ocrResult: {
-                    ...c.ocrResult,
-                    authority: { ...c.ocrResult.authority, isVerified: true }
-                }
-            };
+            return { ...c, ocrResult: { ...c.ocrResult, authority: { ...c.ocrResult.authority, isVerified: true } } };
         }
         return c;
     }));
@@ -374,25 +335,11 @@ function InitialReviewContent() {
             const newRes = currentRes === "เป็น" ? "ไม่เป็น" : "เป็น";
             const isOverridden = newRes !== c.ocrResult.authority.aiResult;
             
-            // Logic to determine main status based on ID
             let newStatus: criteriaStatus = 'pending';
             if (id === 2) newStatus = newRes === "เป็น" ? 'success' : 'fail';
-            if (id === 8) newStatus = newRes === "ไม่เป็น" ? 'success' : 'fail'; // Criteria 8: ไม่เป็น = Good
+            if (id === 8) newStatus = newRes === "ไม่เป็น" ? 'success' : 'fail'; 
 
-            return {
-                ...c,
-                status: newStatus,
-                ocrResult: {
-                    ...c.ocrResult,
-                    status: newStatus as any, // Update internal status too
-                    authority: { 
-                        ...c.ocrResult.authority, 
-                        finalResult: newRes, 
-                        isOverridden: isOverridden,
-                        isVerified: false // Reset verification on change
-                    }
-                }
-            };
+            return { ...c, status: newStatus, ocrResult: { ...c.ocrResult, status: newStatus as any, authority: { ...c.ocrResult.authority, finalResult: newRes, isOverridden: isOverridden, isVerified: false } } };
         }
         return c;
     }));
@@ -401,13 +348,7 @@ function InitialReviewContent() {
   const handleAuthorityOrgChange = (id: number, newOrg: string) => {
     setCriterias(prev => prev.map(c => {
         if (c.id === id && c.ocrResult?.authority) {
-            return {
-                ...c,
-                ocrResult: {
-                    ...c.ocrResult,
-                    authority: { ...c.ocrResult.authority, finalOrganization: newOrg, isVerified: false }
-                }
-            };
+            return { ...c, ocrResult: { ...c.ocrResult, authority: { ...c.ocrResult.authority, finalOrganization: newOrg, isVerified: false } } };
         }
         return c;
     }));
@@ -421,20 +362,13 @@ function InitialReviewContent() {
   const saveAuthorityReason = (id: number) => {
     setCriterias(prev => prev.map(c => {
         if (c.id === id && c.ocrResult?.authority) {
-            return {
-                ...c,
-                ocrResult: {
-                    ...c.ocrResult,
-                    authority: { ...c.ocrResult.authority, finalReason: tempAuthorityReason, isVerified: false }
-                }
-            };
+            return { ...c, ocrResult: { ...c.ocrResult, authority: { ...c.ocrResult.authority, finalReason: tempAuthorityReason, isVerified: false } } };
         }
         return c;
     }));
     setEditingAuthorityReasonId(null);
   };
 
-  // --- Editable Logic for Step 4 ---
   const startEditingDetail = (key: keyof criteria4Details, field: FieldData) => { setEditingField(key); setTempEditValue(field.value || ""); };
   const cancelEditDetail = () => { setEditingField(null); setTempEditValue(""); };
   const saveDetailEdit = (key: keyof criteria4Details) => { 
@@ -448,21 +382,16 @@ function InitialReviewContent() {
   };
 
   // --- Render Functions ---
-
-  // ✅ [NEW] Render Authority with Human-in-the-Loop Controls
   const renderAuthorityHITL = (criteriaId: number, status: criteriaStatus, authority: AuthorityDetails) => {
     const isSuccess = status === 'success';
     const statusClass = getStatusClasses(status);
-    
     let statusLabel = isSuccess ? "Pass" : "Fail";
     if (criteriaId === 2) statusLabel = isSuccess ? "อยู่ในอำนาจ สตง." : "ไม่อยู่ในอำนาจ";
     if (criteriaId === 8) statusLabel = isSuccess ? "ไม่อยู่ในอำนาจอิสระอื่น" : "อยู่ในอำนาจอิสระอื่น";
-
     const isEditingReason = editingAuthorityReasonId === criteriaId;
 
     return (
         <div className="space-y-4 mt-1">
-            {/* Header: AI Status vs Verification */}
             <div className="flex items-center justify-between text-xs mb-1">
                  <div className="flex items-center gap-1 text-gray-500">
                     <span className="font-semibold">🤖 AI Suggestion:</span>
@@ -473,11 +402,9 @@ function InitialReviewContent() {
                  </div>
             </div>
 
-            {/* 1. Toggle Switch for Result */}
             <div className={`p-4 rounded-lg border-2 flex flex-col gap-3 transition-colors ${authority.isOverridden ? 'border-orange-200 bg-orange-50' : (isSuccess ? 'border-green-100 bg-green-50' : 'border-red-100 bg-red-50')}`}>
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                         {/* Toggle Button */}
                         <button 
                             onClick={(e) => { e.stopPropagation(); handleAuthorityResultToggle(criteriaId); }}
                             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${isSuccess ? 'bg-green-500' : 'bg-red-500'}`}
@@ -493,7 +420,6 @@ function InitialReviewContent() {
                 </div>
             </div>
 
-            {/* 2. Organization Picker (Criteria 8 Only & Fail Status) */}
             {criteriaId === 8 && authority.finalResult === "เป็น" && (
                 <div className="bg-white p-3 rounded border border-gray-200 shadow-sm">
                     <label className="block text-xs font-bold text-gray-600 mb-1">องค์กรที่รับผิดชอบ (AI: {authority.aiOrganization || "-"})</label>
@@ -509,7 +435,6 @@ function InitialReviewContent() {
                 </div>
             )}
 
-            {/* 3. Editable Reasoning */}
             <div className="bg-white p-3 rounded border border-gray-200 shadow-sm group">
                 <div className="flex items-center justify-between mb-2">
                     <span className="font-bold text-gray-900 text-sm">เหตุผลประกอบ:</span>
@@ -538,14 +463,12 @@ function InitialReviewContent() {
                 )}
             </div>
 
-            {/* 4. Evidence (Read Only) */}
             {authority.evidence && (
                 <div className="text-xs text-gray-500 italic pl-3 border-l-4 border-gray-300">
                     หลักฐานจากเอกสาร: "{authority.evidence}"
                 </div>
             )}
 
-            {/* 5. Verification Action */}
             {!authority.isVerified && (
                 <button 
                     onClick={() => handleVerifyAuthority(criteriaId)}
@@ -648,6 +571,12 @@ function InitialReviewContent() {
             </div>
         ) : (
             <div className="flex h-full flex-col bg-white">
+                {sessionId && (
+                    <div className="mb-4 p-2 bg-blue-50 border border-blue-100 rounded text-xs text-blue-600 font-mono">
+                        Session: {sessionId}
+                    </div>
+                )}
+                
                 <div className="space-y-3 pb-4">
                     {criterias.map((criteria) => (
                     <div key={criteria.id}>
@@ -656,7 +585,6 @@ function InitialReviewContent() {
                              <div className="flex items-center gap-2"><span className="text-sm font-medium">{criteria.label}</span></div>
                              {criteria.isProcessing && <span className="inline-flex items-center gap-1 mt-1 text-xs text-blue-600 font-semibold animate-pulse">Processing...</span>}
                              
-                             {/* โชว์ Result สั้นๆ เมื่อหน้าต่างพับอยู่ (รวมของ Manual ด้วย) */}
                              {!expandedCriteriaIds.includes(criteria.id) && !criteria.isProcessing && criteria.status !== 'neutral' && (
                                 <div className={`mt-1 text-xs font-bold ${criteria.status === 'success' ? 'text-green-700' : 'text-red-700'}`}>
                                     {criteria.type === "auto" && criteria.id === 2 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
@@ -664,7 +592,6 @@ function InitialReviewContent() {
                                     {criteria.type === "auto" && criteria.id === 6 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
                                     {criteria.type === "auto" && criteria.id === 8 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
                                     
-                                    {/* ของ Manual 3, 5, 7 */}
                                     {criteria.type === "manual" && criteria.selectedOption && `Result: ${criteria.selectedOption}`}
                                 </div>
                              )}
@@ -675,12 +602,10 @@ function InitialReviewContent() {
                         {expandedCriteriaIds.includes(criteria.id) && (
                            <div className="mt-2 ml-4 p-4 border-l-2 border-gray-200 bg-gray-50 rounded-r-md">
                               
-                              {/* ✅ Criteria 2 & 8: Authority Check UI (Improved) */}
                               {(criteria.id === 2 || criteria.id === 8) && criteria.ocrResult?.authority && (
                                   renderAuthorityHITL(criteria.id, criteria.status, criteria.ocrResult.authority)
                               )}
 
-                              {/* Manual Step UI (ข้อ 3, 5, 7) */}
                               {criteria.type === "manual" && criteria.options && (
                                  <div className="space-y-2">
                                     <p className="text-xs font-bold text-gray-500 mb-2 uppercase">Manual Verification</p>
@@ -693,7 +618,6 @@ function InitialReviewContent() {
                                  </div>
                               )}
 
-                              {/* Step 4: Editable Form */}
                               {criteria.id === 4 && criteria.ocrResult?.details && (
                                 <div className="space-y-2 bg-white p-2 rounded border border-gray-100">
                                     {renderCriteria4Item("official", "เจ้าหน้าที่ผู้ถูกร้อง", criteria.ocrResult.details.official, true)}
@@ -704,7 +628,6 @@ function InitialReviewContent() {
                                 </div>
                               )}
 
-                              {/* Step 6: People List */}
                               {criteria.id === 6 && criteria.ocrResult?.people && (
                                 <div className="space-y-3">
                                     <div className="bg-white border border-gray-200 rounded-md overflow-hidden">
@@ -721,7 +644,6 @@ function InitialReviewContent() {
                                 </div>
                               )}
 
-                              {/* General Feedback (Optional for other criteria) */}
                               {criteria.ocrResult && !(criteria.id === 2 || criteria.id === 8) && (
                                 <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
                                     <span className="text-xs text-gray-400">Is this result correct?</span>
@@ -738,16 +660,14 @@ function InitialReviewContent() {
                     </div>
                     ))}
                 </div>
-
-                {/* Save Button Area */}
+                
                 <div className="pt-4 mt-auto border-t border-gray-100 flex flex-col gap-3">
-                    <button
-                        onClick={toggleExpandAll}
-                        className="w-full px-6 py-2 rounded-lg border border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100 transition-all text-sm font-medium shadow-sm"
-                    >
+                    <button onClick={toggleExpandAll} className="w-full px-6 py-2 rounded-lg border border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100 transition-all text-sm font-medium shadow-sm">
                         {expandedCriteriaIds.length === criterias.length ? "ย่อ Criteria ทั้งหมด" : "ขยาย Criteria ทั้งหมด"}
                     </button>
-                    <button onClick={handleSaveToDatabase} disabled={isSaving} className="w-full px-6 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all text-sm font-medium shadow-sm">{isSaving ? "Saving..." : "Save Results"}</button>
+                    <button onClick={handleSaveToDatabase} disabled={isSaving || !sessionId} className="w-full px-6 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all text-sm font-medium shadow-sm disabled:opacity-50">
+                        {isSaving ? "Saving..." : "สรุปผลและบันทึกข้อมูล"}
+                    </button>
                 </div>
             </div>
         )}
@@ -758,12 +678,8 @@ function InitialReviewContent() {
 
 export default function InitialReviewProjectPage() {
   return (
-    <Suspense fallback={
-      <div className="flex h-screen w-full items-center justify-center text-gray-500 font-medium">
-        กำลังโหลดข้อมูล... (Loading...)
-      </div>
-    }>
-      <InitialReviewContent />
+    <Suspense fallback={<div className="flex h-screen w-full items-center justify-center text-gray-500 font-medium">กำลังโหลดข้อมูล...</div>}>
+      <InitialReviewProcessContent />
     </Suspense>
   );
 }

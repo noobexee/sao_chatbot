@@ -1,126 +1,82 @@
 import json
+from typing import List, Tuple, Optional, Dict
 from src.db.connection import get_db_connection
 
 class InitialReviewRepository:
     
-    def save_criteria_log(self, review_id: str, criteria_id: int, ai_result: dict, feedback: str = None) -> bool:
+    def save_criteria_log(self, user_id: str, session_id: str, criteria_id: int, ai_result: dict, feedback: str = None) -> bool:
         """
-        บันทึก Log ผลการตรวจสอบรายข้อ (Criteria) เพื่อนำไปพัฒนา AI
-        รองรับ Criteria 2, 4, 6, 8 และตัดระบบ Session เก่าออกแล้ว
+        บันทึก Log ผลการตรวจสอบรายข้อ (Criteria) โดยอิงตาม session_id และ user_id
         """
-        print(f"   [DB] Saving Log: ReviewID={review_id}, Criteria={criteria_id}, Feedback={feedback}")
+        print(f"   [DB] Saving Log: User={user_id}, Session={session_id}, Criteria={criteria_id}")
         conn = None
         try:
             conn = get_db_connection()
             cur = conn.cursor()
 
-            # Note: สมมติว่าตารางใน DB ยังใช้ชื่อคอลัมน์ InitialReview_id อยู่
-            # เราจะ map review_id (จาก memory) ลงไปใน column นั้น
             query_log = """
-                INSERT INTO InitialReview_feedback_logs 
-                (InitialReview_id, criteria_id, field_type, ai_value, user_edit, user_value, result_correct, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                INSERT INTO initial_review_logs 
+                (user_id, session_id, criteria_id, field_type, ai_value, user_edit, user_value, result_correct, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
             """
 
-            # --- Logic คำนวณความถูกต้อง (Result Correctness) ---
-            # ถ้า user กด dislike (down) ถือว่า AI ผิด (False)
             default_correctness = False if feedback == 'down' else True
-
-            # =========================================================
-            # ✅ Criteria 2: อำนาจหน้าที่ สตง. (SAO Authority)
-            # =========================================================
-            if criteria_id == 2:
-                # ดึงข้อมูลจาก authority object (ถ้าไม่มีให้หาจาก root)
-                authority_data = ai_result.get('authority', ai_result)
-                
-                # Field ที่ต้องการเก็บ
-                fields = ['result', 'reason', 'evidence']
-                
-                for field in fields:
-                    val = authority_data.get(field, "-")
-                    cur.execute(query_log, (
-                        review_id,
-                        2,              # criteria_id
-                        f"c2_{field}",  # field_type เช่น c2_result, c2_reason
-                        str(val),       # ai_value
-                        False, "",      # user_edit (ยังไม่มี UI แก้ไขสำหรับข้อนี้)
-                        default_correctness
-                    ))
-
-            # =========================================================
-            # ✅ Criteria 8: อำนาจองค์กรอิสระอื่น (Other Authority)
-            # =========================================================
-            elif criteria_id == 8:
-                authority_data = ai_result.get('authority', ai_result)
-                
-                # มี organization เพิ่มเข้ามา
-                fields = ['result', 'organization', 'reason', 'evidence']
-                
-                for field in fields:
-                    val = authority_data.get(field, "-")
-                    cur.execute(query_log, (
-                        review_id,
-                        8,              # criteria_id
-                        f"c8_{field}",  # field_type
-                        str(val),       # ai_value
-                        False, "",
-                        default_correctness
-                    ))
-
-            # =========================================================
-            # ✅ Criteria 4: ความครบถ้วน (Sufficiency)
-            # =========================================================
-            elif criteria_id == 4:
+            if criteria_id == 4:
                 details = ai_result.get('details', {})
-                if not isinstance(details, dict): details = {}
-
-                for key, item in details.items():
-                    # รองรับ Structured Data {original:..., value:..., isEdited:...}
-                    if isinstance(item, dict) and 'original' in item:
-                        ai_val = str(item.get('original', ""))
-                        is_edited = bool(item.get('isEdited', False))
-                        user_val = str(item.get('value', "")) if is_edited else ""
-                        
-                        # ถ้ามีการแก้ไข แสดงว่า AI ผิด
-                        result_correct = False if is_edited else default_correctness
-
-                        cur.execute(query_log, (
-                            review_id, 4, key, ai_val, is_edited, user_val, result_correct
-                        ))
+                for k, v in details.items():
+                    if isinstance(v, dict):
+                        v_ai = str(v.get('original', '')) if v.get('original') else ""
+                        v_user = str(v.get('value', '')) if v.get('value') else ""
+                        is_edited = v.get('isEdited', False)
                     else:
-                        # Fallback (Simple string)
-                        cur.execute(query_log, (
-                            review_id, 4, key, str(item), False, "", default_correctness
-                        ))
+                        v_ai = str(v) if v else ""
+                        v_user = v_ai
+                        is_edited = False
 
-            # =========================================================
-            # ✅ Criteria 6: ผู้ร้องเรียน (Complainant)
-            # =========================================================
+                    cur.execute(query_log, (
+                        user_id, session_id, 4, k, v_ai, is_edited, v_user, default_correctness
+                    ))
+
+            elif criteria_id in [2, 8]:
+                auth_data = ai_result.get('authority', {})
+                
+                if 'finalResult' in auth_data:
+                    ai_res = auth_data.get('aiResult', '')
+                    final_res = auth_data.get('finalResult', '')
+                    ai_reason = auth_data.get('aiReason', '')
+                    final_reason = auth_data.get('finalReason', '')
+                    is_overridden = auth_data.get('isOverridden', False)
+                    
+                    cur.execute(query_log, (
+                        user_id, session_id, criteria_id, f"criteria{criteria_id}_result", 
+                        ai_res, is_overridden, final_res, not is_overridden
+                    ))
+                    cur.execute(query_log, (
+                        user_id, session_id, criteria_id, f"criteria{criteria_id}_reason", 
+                        ai_reason, (ai_reason != final_reason), final_reason, True
+                    ))
+                else:
+                    ai_val = json.dumps(ai_result, ensure_ascii=False)
+                    cur.execute(query_log, (
+                        user_id, session_id, criteria_id, f"criteria{criteria_id}_raw", 
+                        ai_val, False, "", default_correctness
+                    ))
+
             elif criteria_id == 6:
                 people = ai_result.get('people', [])
                 ai_value_str = json.dumps(people, ensure_ascii=False)
 
                 cur.execute(query_log, (
-                    review_id,
-                    6,
-                    "people_list",
-                    ai_value_str,
-                    False, "",
-                    default_correctness
+                    user_id, session_id, 6, "people_list", ai_value_str, False, "", default_correctness
                 ))
 
-            # =========================================================
-            # ⚪ Default / Other Criteria (Manual or Unknown)
-            # =========================================================
             else:
-                # เก็บ Raw JSON ไปเลย
+                ai_val = json.dumps(ai_result, ensure_ascii=False)
+                user_val = ai_result.get('manual_selection', '')
+                is_edited = bool(user_val)
+
                 cur.execute(query_log, (
-                    review_id,
-                    criteria_id,
-                    "raw_result",
-                    json.dumps(ai_result, ensure_ascii=False),
-                    False, "", 
-                    default_correctness
+                    user_id, session_id, criteria_id, "raw_result", ai_val, is_edited, user_val, default_correctness
                 ))
 
             conn.commit()
@@ -131,5 +87,72 @@ class InitialReviewRepository:
             print(f"   ❌ [DB] Log Insert Error: {e}")
             if conn: conn.rollback()
             return False 
+        finally:
+            if conn: conn.close()
+    
+    def get_all_sessions(self, user_id: str) -> List[Dict]:
+        """ดึงประวัติการตรวจสอบทั้งหมดของ User คนนั้นๆ"""
+        conn = None
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor(dictionary=True)
+
+            query = """
+                SELECT session_id, MAX(created_at) as last_updated, COUNT(DISTINCT criteria_id) as criteria_count
+                FROM initial_review_logs
+                WHERE user_id = %s
+                GROUP BY session_id
+                ORDER BY last_updated DESC
+            """
+            cur.execute(query, (user_id,))
+            rows = cur.fetchall()
+            cur.close()
+            return rows
+        except Exception as e:
+            print(f"❌ DB Fetch Error: {e}")
+            return []
+        finally:
+            if conn: conn.close()
+
+    def get_review_by_session(self, user_id: str, session_id: str) -> List[Dict]:
+        """ดึงข้อมูล Logs ทั้งหมดภายใต้ Session ID (เอกสารฉบับเดียว)"""
+        conn = None
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor(dictionary=True)
+            
+            query = """
+                SELECT criteria_id, field_type, ai_value, user_edit, user_value, result_correct, created_at
+                FROM initial_review_logs 
+                WHERE user_id = %s AND session_id = %s
+                ORDER BY criteria_id ASC, created_at ASC
+            """
+            cur.execute(query, (user_id, session_id))
+            rows = cur.fetchall()
+            cur.close()
+            return rows
+        except Exception as e:
+            print(f"❌ DB Fetch Error: {e}")
+            return []
+        finally:
+            if conn: conn.close()
+
+    def delete_session(self, user_id: str, session_id: str) -> bool:
+        """ลบประวัติการตรวจสอบของ Session นั้นๆ"""
+        conn = None
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            
+            query = "DELETE FROM initial_review_logs WHERE user_id = %s AND session_id = %s"
+            cur.execute(query, (user_id, session_id))
+            conn.commit()
+            
+            cur.close()
+            return True
+        except Exception as e:
+            print(f"❌ DB Delete Error: {e}")
+            if conn: conn.rollback()
+            return False
         finally:
             if conn: conn.close()

@@ -1,9 +1,12 @@
 import { getBaseUrl } from "../config";
 
+// 🟢 อัปเดต Payload ให้ตรงกับ Pydantic Schema ฝั่ง Backend
 export interface SaveResultPayload {
-    InitialReview_id: string;
+    user_id: string;
+    session_id: string;
     criteria_id: number;
-    result: any; // The structured data from the criteria
+    result: any; // ข้อมูลที่ปรับแก้แล้วจาก Criteria
+    feedback?: "up" | "down" | null; // Feedback ที่ User กด (ถ้ามี)
 }
 
 export interface SaveResultResponse {
