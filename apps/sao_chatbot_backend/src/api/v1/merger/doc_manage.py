@@ -25,6 +25,10 @@ def parse_date(value: Optional[str]) -> Optional[date]:
 def list_documents():
     return manager.list_documents()
 
+# get forms
+@router.get("/doc/{doc_id}/related")
+def get_related_document(doc_id: str):
+    return manager.get_related_doc(doc_id)
 
 # original pdf 
 @router.get("/doc/{doc_id}/original")
@@ -172,3 +176,4 @@ def delete_document(doc_id: str):
         "status": "deleted",
         "doc_id": doc_id,
     }
+

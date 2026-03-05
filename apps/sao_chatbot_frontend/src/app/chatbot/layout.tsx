@@ -3,10 +3,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
-import getUserHistory from "@/libs/getUserHistory"; 
-import deleteChatHistory from "@/libs/deleteChatHistory"; 
+import getUserHistory from "@/libs/getUserHistory";
+import deleteChatHistory from "@/libs/deleteChatHistory";
 import { updateSession } from "@/libs/updateUserSession";
-import Image from "next/image";
 
 interface Session {
   session_id: string;
@@ -23,9 +22,9 @@ interface HistoryApiResponse {
 
 export default function ChatLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [history, setHistory] = useState<Session[]>([]); 
+  const [history, setHistory] = useState<Session[]>([]);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
-  
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -33,13 +32,32 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   const router = useRouter();
   const params = useParams();
 
-  const USER_ID = "1"; 
+  useEffect(() => {
+    const handleRefresh = async () => {
+      try {
+        const response: HistoryApiResponse = await getUserHistory();
 
+        if (response.success) {
+          setHistory(response.data);
+        }
+      } catch (err) {
+        console.error("Refresh failed:", err);
+      }
+    };
+
+    window.addEventListener("session-updated", handleRefresh);
+
+    return () => {
+      window.removeEventListener("session-updated", handleRefresh);
+    };
+  }, []);
+  
+  // ---------------- FETCH HISTORY ----------------
   useEffect(() => {
     const fetchSessions = async () => {
       try {
-        const response: HistoryApiResponse = await getUserHistory(USER_ID);
-        
+        const response: HistoryApiResponse = await getUserHistory();
+
         if (response.success) {
           setHistory(response.data);
         } else {
@@ -49,10 +67,11 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
         console.error("Failed to load sidebar:", err);
       }
     };
-    fetchSessions();
-  }, []);
 
-  // Close menu when clicking outside
+    fetchSessions();
+  }, [params?.session_id]);
+
+  // ---------------- CLOSE MENU ----------------
   useEffect(() => {
     const handleClickOutside = () => setActiveMenuId(null);
     if (activeMenuId) {
@@ -61,7 +80,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     return () => window.removeEventListener("click", handleClickOutside);
   }, [activeMenuId]);
 
-  // Focus input when editing starts
+  // ---------------- AUTO FOCUS INPUT ----------------
   useEffect(() => {
     if (editingId && renameInputRef.current) {
       renameInputRef.current.focus();
@@ -74,7 +93,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     setActiveMenuId((prev) => (prev === id ? null : id));
   };
 
-  // --- Logic for Delete ---
+  // ---------------- DELETE ----------------
   const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -82,10 +101,13 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     if (!confirm("คุณต้องการลบแชทนี้ใช่หรือไม่?")) return;
 
     try {
-      const result = await deleteChatHistory(USER_ID, sessionId);
-      
+      const result = await deleteChatHistory(sessionId);
+
       if (result.success) {
-        setHistory((prev) => prev.filter((item) => item.session_id !== sessionId));
+        setHistory((prev) =>
+          prev.filter((item) => item.session_id !== sessionId)
+        );
+
         if (params.session_id === sessionId) {
           router.push("/chatbot");
         }
@@ -100,37 +122,43 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     }
   };
 
-  // --- Logic for Pinning ---
+  // ---------------- PIN ----------------
   const handlePin = async (e: React.MouseEvent, session: Session) => {
     e.stopPropagation();
+
     const newStatus = !session.is_pinned;
 
-    // Optimistic Update with Sorting (Pinned items go to top)
-    setHistory(prev => {
-      const updatedList = prev.map(item => 
-        item.session_id === session.session_id ? { ...item, is_pinned: newStatus } : item
+    // optimistic update
+    setHistory((prev) => {
+      const updated = prev.map((item) =>
+        item.session_id === session.session_id
+          ? { ...item, is_pinned: newStatus }
+          : item
       );
 
-      return updatedList.sort((a, b) => {
+      return updated.sort((a, b) => {
         const pinA = a.is_pinned ? 1 : 0;
         const pinB = b.is_pinned ? 1 : 0;
-        if (pinA !== pinB) return pinB - pinA; // Higher pin value first
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime(); // Then newest
+        if (pinA !== pinB) return pinB - pinA;
+        return (
+          new Date(b.created_at).getTime() -
+          new Date(a.created_at).getTime()
+        );
       });
     });
 
     setActiveMenuId(null);
-    
-    // Call API to save to DB
+
     try {
-      await updateSession(USER_ID, session.session_id, { is_pinned: newStatus });
+      await updateSession(session.session_id, {
+        is_pinned: newStatus,
+      });
     } catch (error) {
-      console.error("Failed to pin session:", error);
-      // Optional: Revert UI if needed, currently just logging
+      console.error("Failed to pin:", error);
     }
   };
 
-  // --- Logic for Renaming ---
+  // ---------------- RENAME ----------------
   const startRename = (e: React.MouseEvent, session: Session) => {
     e.stopPropagation();
     setEditingId(session.session_id);
@@ -140,23 +168,28 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
 
   const saveRename = async () => {
     if (!editingId) return;
-    const sessionId = editingId;
+
     const newTitle = editTitle.trim();
 
     if (newTitle) {
-      // Optimistic UI Update
-      setHistory(prev => prev.map(item => 
-        item.session_id === sessionId ? { ...item, title: newTitle } : item
-      ));
-      
-      // Call API to save to DB
+      // optimistic update
+      setHistory((prev) =>
+        prev.map((item) =>
+          item.session_id === editingId
+            ? { ...item, title: newTitle }
+            : item
+        )
+      );
+
       try {
-        await updateSession(USER_ID, sessionId, { title: newTitle });
+        await updateSession(editingId, {
+          title: newTitle,
+        });
       } catch (error) {
-        console.error("Failed to rename session:", error);
+        console.error("Rename failed:", error);
       }
     }
-    
+
     setEditingId(null);
   };
 
@@ -300,13 +333,13 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
                 <line x1="3" x2="21" y1="6" y2="6" /><line x1="3" x2="21" y1="12" y2="12" /><line x1="3" x2="21" y1="18" y2="18" />
               </svg>
             </button>
-            <Link href="/audit">
+            <Link href="/InitialReview">
               <div
                 className="cursor-pointer truncate flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 shrink-0" >
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" >
                   <path d="M10 2v3" /><path d="M14 2v3" /><path d="M15 11V6h3l2 3v11c0 1.1-.9 2-2 2H6c-1.1 0-2-.9-2-2V9l2-3h3v5c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2Z" /><path d="M10 18h4" />
                 </svg>
-                Audit
+                Initial Review
               </div>
             </Link>
             <Link href="/merger">
@@ -319,17 +352,6 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
               </div>
             </Link>
           </div>
-          <div className="cursor-pointer truncate relative h-10 w-10 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-gray-100">
-            <Image
-              src="/user-placeholder.jpg"
-              alt="User"
-              width={40}
-              height={40}
-              className="object-cover w-full h-full"
-            />
-            <span className="absolute bottom-0 right-0 block h-3 w-3 rounded-full bg-green-500 ring-2 ring-white"></span>
-          </div>
-
         </header>
         
          <div className="flex-1 relative w-full overflow-hidden">

@@ -10,20 +10,44 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-  
-  const userId = "1";
+
+  function parseJwt(token: string) {
+    try {
+      const base64 = token.split(".")[1];
+      return JSON.parse(atob(base64));
+    } catch {
+      return null;
+    }
+  }
+
   const handleSend = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!input.trim() || isLoading) return;
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      alert("Unauthorized");
+      return;
+    }
+
+    const payload = parseJwt(token);
+    const userId = payload?.sub;
+
+    if (!userId) {
+      alert("Invalid token");
+      return;
+    }
 
     const userText = input;
     const newSessionId = uuidv4();
     setIsLoading(true);
 
     try {
-      await sendMessage(userId, newSessionId, userText);
+      await sendMessage(newSessionId, userText);
 
       router.push(`/chatbot/${newSessionId}`);
+      window.dispatchEvent(new Event("session-updated"));
       
     } catch (error) {
       console.error("Failed to start chat:", error);

@@ -239,5 +239,8 @@ class DocumentManager:
         self.repo.delete_document(doc_id)
         return self.updater.delete_document(doc_id)
 
+    def get_related_doc(self, doc_id: str) -> Optional[List[str]]:
+        list = self.repo.get_related_doc(doc_id)
+        return list
 
 manager = DocumentManager()

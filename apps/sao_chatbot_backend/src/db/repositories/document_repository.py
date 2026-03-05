@@ -1,5 +1,6 @@
 from typing import Optional, List
 import uuid
+import base64
 from src.db.connection import get_db_connection
 from src.app.document.documentSchemas import DocumentMeta, MergeRequest
 
@@ -117,8 +118,6 @@ class DocumentRepository:
             return result
         finally:
             conn.close()
-
-
 
     # GET ORIGINAL PDF
     def get_original_pdf(self, doc_id: str) -> tuple[str, bytes]:
@@ -344,47 +343,84 @@ class DocumentRepository:
 
             new_doc_id = str(uuid.uuid4())
 
-            cur.execute(
+            if payload.merge_mode == "replace_all":
+                query = """
+                    INSERT INTO documents (
+                        id,
+                        type,
+                        title,
+                        announce_date,
+                        effective_date,
+                        version,
+                        text_content,
+                        status,
+                        is_snapshot,
+                        is_latest,
+                        pdf_file_name,
+                        pdf_file_data,
+                        created_at
+                    )
+                    SELECT
+                        %s,
+                        type,
+                        title,
+                        announce_date,
+                        effective_date,
+                        version,
+                        %s,
+                        'merged',
+                        FALSE,
+                        TRUE,
+                        pdf_file_name,
+                        pdf_file_data,
+                        NOW()
+                    FROM documents
+                    WHERE id = %s
                 """
-                INSERT INTO documents (
-                    id,
-                    type,
-                    title,
-                    announce_date,
-                    effective_date,
-                    version,
-                    text_content,
-                    status,
-                    is_snapshot,
-                    is_latest,
-                    created_at
-                )
-                SELECT
-                    %s,
-                    type,
-                    title,
-                    announce_date,
-                    effective_date,
-                    version + 1,
-                    %s,
-                    'merged',
-                    TRUE,
-                    TRUE,
-                    NOW()
-                FROM documents
-                WHERE id = %s
-                """,
+            else:
+                query = """
+                    INSERT INTO documents (
+                        id,
+                        type,
+                        title,
+                        announce_date,
+                        effective_date,
+                        version,
+                        text_content,
+                        status,
+                        is_snapshot,
+                        is_latest,
+                        created_at
+                    )
+                    SELECT
+                        %s,
+                        type,
+                        title,
+                        announce_date,
+                        effective_date,
+                        version,
+                        %s,
+                        'merged',
+                        TRUE,
+                        TRUE,
+                        NOW()
+                    FROM documents
+                    WHERE id = %s
+                """
+
+            cur.execute(
+                query,
                 (new_doc_id, merged_text, payload.amend_doc_id),
             )
 
             conn.commit()
             return new_doc_id
+
         except Exception:
             conn.rollback()
             raise
         finally:
             conn.close()
-
 
     # VERSION BUMP
     def bump_version_and_invalidate_latest(self, doc_id: str):
@@ -449,3 +485,35 @@ class DocumentRepository:
         finally:
             if conn:
                 conn.close()
+
+    def get_related_doc(self, document_id: str) -> List[dict]:
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    document_id,
+                    file_name,
+                    file_data,
+                    created_at
+                FROM document_files
+                WHERE document_id = %s
+                ORDER BY created_at DESC
+                """,
+                (document_id,)
+            )
+
+            result = []
+            for r in cur.fetchall():
+                result.append({
+                    "id": r[0],
+                    "document_id": r[1],
+                    "file_name": r[2],
+                    "file_data": base64.b64encode(r[3]).decode("utf-8"),
+                })
+
+            return result
+        finally:
+            conn.close()

@@ -1,17 +1,18 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Kanit } from "next/font/google";
+import { Sarabun } from 'next/font/google';
 
-const kanit = Kanit({
-  subsets: ["thai", "latin"],
-  weight: ["300", "400", "500", "600"],
-  variable: "--font-kanit",
+const sarabun = Sarabun({
+  weight: ['100', '200', '300', '400', '500', '600', '700', '800'],
+  subsets: ['thai', 'latin'],
+  variable: '--font-th-sarabun',
+  display: 'swap',
 });
 
 export default function Home() {
   return (
     <main
-      className={`flex min-h-screen flex-col items-center justify-center bg-white p-4 ${kanit.className}`}>
+      className={`flex min-h-screen flex-col items-center justify-center bg-white p-4 ${sarabun.className}`}>
       <div className="flex flex-col items-center space-y-8 text-center">
         <div className="relative mb-4">
           <Image
@@ -33,7 +34,7 @@ export default function Home() {
         </div>
 
         <div className="pt-12">
-          <Link href="/chatbot"> 
+          <Link href="/auth"> 
             <button className="cursor-pointer truncate group relative flex items-center justify-center rounded-full border border-gray-200 bg-white px-16 py-4 text-[#a83b3b] shadow-[0_4px_14px_0_rgba(0,0,0,0.05)] transition-all hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(0,0,0,0.1)] active:translate-y-0">
               <span className="text-lg font-medium">ลงชื่อเข้าใช้</span>
             </button>

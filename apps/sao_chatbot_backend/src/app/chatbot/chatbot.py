@@ -29,7 +29,7 @@ class Chatbot:
         self.repository = ChatRepository()
         self.retriever = Retriever()
 
-    def _get_history_objects(self, user_id: int, session_id: str) -> List[Any]:
+    def _get_history_objects(self, user_id: str, session_id: str) -> List[Any]:
         try:
             rows = self.repository.get_messages_by_session(user_id, session_id)
             messages = []
@@ -41,7 +41,7 @@ class Chatbot:
             logger.warning(f"Session history retrieval failed for {session_id}. Proceeding with empty history.")
             return []
  
-    def get_session_history(self, user_id: int, session_id: str) -> List[Dict]:
+    def get_session_history(self, user_id: str, session_id: str) -> List[Dict]:
         try :
             rows = self.repository.get_messages_by_session(user_id, session_id)
             formatted_history = []
@@ -54,14 +54,14 @@ class Chatbot:
             logger.warning(f"Session history retrieval failed for {session_id}. Proceeding with empty history.")
             return []
 
-    def get_user_sessions(self, user_id: int) -> List[Dict]:
+    def get_user_sessions(self, user_id: str) -> List[Dict]:
         try : 
             return self.repository.get_user_sessions_summary(user_id)
         except Exception as e:
             logger.warning(f"Session retrieval failed for {user_id}. Proceeding with empty history.")
             return []
 
-    def delete_session_history(self, user_id: int, session_id: str) -> Dict[str, Any]:
+    def delete_session_history(self, user_id: str, session_id: str) -> Dict[str, Any]:
         try:
             success = self.repository.delete_session(user_id, session_id)
             if success:
@@ -71,7 +71,7 @@ class Chatbot:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-    def update_session(self, user_id: int, session_id: str, title: Optional[str] = None, is_pinned: Optional[bool] = None) -> Dict[str, Any]:
+    def update_session(self, user_id: str, session_id: str, title: Optional[str] = None, is_pinned: Optional[bool] = None) -> Dict[str, Any]:
         try:
             success = self.repository.update_session_metadata(user_id, session_id, title, is_pinned)
             
@@ -149,8 +149,8 @@ class Chatbot:
         except Exception as e:
             print(f"Routing Chain Failed: {e}")
             return "LEGAL_RAG"
- 
-    async def answer_question(self, user_id: int, session_id: str, query: str) -> RAGResponse: 
+
+    async def answer_question(self, user_id: str, session_id: str, query: str) -> RAGResponse: 
         log_prefix = f"[User: {user_id} | Session: {session_id}]"
         try:
             logger.info(f"{log_prefix} Received query: {query[:50]}...")

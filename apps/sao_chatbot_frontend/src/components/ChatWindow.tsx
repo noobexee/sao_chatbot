@@ -15,10 +15,9 @@ interface Message {
 interface ChatWindowProps {
   initialMessages: Message[];
   sessionId: string;
-  userId: string;
 }
 
-export default function ChatWindow({ initialMessages, sessionId, userId }: ChatWindowProps) {
+export default function ChatWindow({ initialMessages, sessionId }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -26,9 +25,15 @@ export default function ChatWindow({ initialMessages, sessionId, userId }: ChatW
   const router = useRouter();
 
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+    setTimeout(() => {
+      scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 50);
   }, [messages, isLoading]);
 
+  useEffect(() => {
+    setMessages(initialMessages);
+  }, [initialMessages]);
+  
   const formatTime = (dateString: string) => {
     if (!dateString) return "";
     const date = new Date(dateString);
@@ -54,7 +59,7 @@ export default function ChatWindow({ initialMessages, sessionId, userId }: ChatW
     setIsLoading(true);
 
     try {
-      const responseData = await sendMessage(userId, sessionId, userText);
+      const responseData = await sendMessage(sessionId, userText);
       
       const aiMessage: Message = {
         role: "assistant",

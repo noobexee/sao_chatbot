@@ -1,15 +1,12 @@
 from fastapi import APIRouter, HTTPException
-
 from src.app.document.documentSchemas import MergeRequest
-from src.app.document.documentManage import DocumentManager
+from src.app.document.documentManage import manager
 
 router = APIRouter()
 
 
 @router.put("/merge")
 def merge_documents(payload: MergeRequest):
-    manager = DocumentManager()
-
     try:
         result = manager.merge_documents(
             base_doc_id=payload.base_doc_id,

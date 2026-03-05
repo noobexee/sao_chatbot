@@ -1,0 +1,43 @@
+import { getBaseUrl } from "../config";
+
+export interface UploadResponse {
+    status: string;
+    InitialReview_id: string;
+    message?: string;
+}
+
+export async function uploadDocument(file: File): Promise<UploadResponse> {
+    const baseUrl = getBaseUrl();
+    
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+        const response = await fetch(`${baseUrl}/api/v1/InitialReview/upload`, {
+            method: "POST",
+            body: formData,
+        });
+
+        if (!response.ok) {
+            let errorMsg = "Failed to upload document";
+            try {
+                const errorText = await response.text();
+                try {
+                    const errorData = JSON.parse(errorText);
+                    errorMsg = errorData.message || errorData.detail || errorMsg;
+                } catch {
+                    if (errorText) errorMsg = errorText;
+                }
+            } catch (e) {
+                console.error("Error parsing error response", e);
+            }
+            throw new Error(errorMsg);
+        }
+
+        return await response.json();
+
+    } catch (error) {
+        console.error("API Call Failed:", error);
+        throw error;
+    }
+}

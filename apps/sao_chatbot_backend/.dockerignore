@@ -16,7 +16,6 @@ __pycache__/
 *.py[cod]
 
 # --- Secrets ---
-# CRITICAL: Never copy your .env file into the image
 .env
 .env.*
 
@@ -37,3 +36,6 @@ README.md
 Thumbs.db
 .idea/
 .vscode/
+
+#log
+logs/*

@@ -7,7 +7,7 @@ setup_logging()
 
 app = FastAPI(
     title="RAG Backend API",
-    description="API for Retrieval Augmented Generation and Audit Logging",
+    description="API for Retrieval Augmented Generation and InitialReview Logging",
     version="1.0.0",
 )
 

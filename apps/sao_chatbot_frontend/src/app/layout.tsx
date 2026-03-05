@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import { Kanit } from "next/font/google"; // Assuming you added the font here too
+import { Sarabun } from 'next/font/google';
 import "./globals.css";
 
-const kanit = Kanit({
-  subsets: ["thai", "latin"],
-  weight: ["300", "400", "500", "600"],
-  variable: "--font-kanit",
+const sarabun = Sarabun({
+  weight: ['100', '200', '300', '400', '500', '600', '700', '800'],
+  subsets: ['thai', 'latin'],
+  variable: '--font-th-sarabun',
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
@@ -20,7 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={kanit.className}>{children}</body>
+      <body className={sarabun.className}>{children}</body>
     </html>
   );
 }
