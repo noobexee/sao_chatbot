@@ -10,7 +10,6 @@ from src.app.document.documentUpdate import DocumentUpdater
 
 load_dotenv()
 
-
 def convert_thai_date(date_str: str) -> date:
     if not date_str:
         return None
@@ -59,7 +58,7 @@ def import_documents():
         return
 
     CSV_PATH = "scripts/data.csv"
-    FILE_BASE_DIR = "scripts/files_n_data/"
+    FILE_BASE_DIR = "storage/files"
 
     updater = DocumentUpdater()
 
