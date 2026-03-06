@@ -12,6 +12,7 @@ from src.db.vector_store.vector_store import load_faiss_index
 from src.app.llm.typhoon import TyphoonLLM
 from .utils.formatters import simplify_thai_text, thai_to_arabic, normalize_regulation_id
 import asyncio
+from threading import Lock
 
 REGULATION_PATH = "storage/regulations"
 OTHERS_PATH = "storage/others"
@@ -32,6 +33,7 @@ class Retriever:
         self.other_bm25 = None
 
         self.master_map = self._load_master_map("storage/master_map.json")
+        self.search_lock = Lock()
         self._reload_resources()
 
     def _reload_resources(self):
@@ -187,12 +189,14 @@ class Retriever:
             return word_tokenize(query_text, engine="newmm")
     def _filter_date(self, candidates, k, search_date=None):
         if not search_date:
-            target_dt = datetime.now()
+            now = datetime.now() 
+            target_dt = now.replace(year=now.year + 543)
         else:
             try:
                 target_dt = datetime.strptime(search_date, "%Y-%m-%d")
             except ValueError:
-                target_dt = datetime.now()
+                now = datetime.now() 
+                target_dt = now.replace(year=now.year + 543)
 
         filtered_results = []
         seen_ids = set()
@@ -210,7 +214,7 @@ class Retriever:
                 exp_raw = match.get("expire_date")
 
                 if not eff_raw or str(eff_raw).strip().lower() == "null":
-                    eff_str = "1900-01-01"
+                    eff_str = "1000-01-01"
                 else:
                     eff_str = str(eff_raw).strip()
 
@@ -221,9 +225,9 @@ class Retriever:
                 
                 try:
                     eff_dt = datetime.strptime(eff_str, "%Y-%m-%d")
-                    exp_dt = datetime.strptime(exp_str, "%Y-%m-%d")
+                    exp_dt = datetime.strptime(exp_str, "%  Y-%m-%d")
                 except ValueError:
-                    eff_dt = datetime.strptime("1900-01-01", "%Y-%m-%d")
+                    eff_dt = datetime.strptime("1000-01-01", "%Y-%m-%d")
                     exp_dt = datetime.strptime("9999-12-31", "%Y-%m-%d")
 
                 if eff_dt <= target_dt <= exp_dt:
@@ -302,11 +306,9 @@ class Retriever:
 
     async def hybrid_search_regulation(self, query: str, k: int = 5, search_date: str = None):
         try:
-            keywords_extract_task = self.extract_keywords(query)          
-            vec_task = asyncio.to_thread(self.vector_search_regulation, query, k) 
-            keywords = await keywords_extract_task
-            key_task = asyncio.to_thread(self.keyword_search_regulation, keywords, k)
-            vec_res, key_res = await asyncio.gather(vec_task, key_task)
+            keywords = await self.extract_keywords(query)
+            vec_res = self.vector_search_regulation(query, k)
+            key_res = self.keyword_search_regulation(keywords, k)
             candidates = self._run_rrf_fusion(vec_res, key_res, self.reg_metadata, k)
             return self._filter_date(candidates, k, search_date)
 
@@ -339,12 +341,10 @@ class Retriever:
 
     async def hybrid_search_other(self, query: str, k: int = 5, search_date: str = None):
         try:
-            keywords_extract_task = self.extract_keywords(query)          
-            vec_task = asyncio.to_thread(self.vector_search_other, query, k) 
-            keywords = await keywords_extract_task
-            key_task = asyncio.to_thread(self.keyword_search_other, keywords, k)
-            vec_res, key_res = await asyncio.gather(vec_task, key_task)
-            candidates = self._run_rrf_fusion(vec_res, key_res, self.reg_metadata, k)
+            keywords = await self.extract_keywords(query)
+            vec_res = self.vector_search_other(query, k)
+            key_res = self.keyword_search_other(keywords, k)
+            candidates = self._run_rrf_fusion(vec_res, key_res, self.other_metadata, k)
             return self._filter_date(candidates, k, search_date)
         except Exception as e:
             logger.error(f"hybrid search on non regulation failed: {e}")
