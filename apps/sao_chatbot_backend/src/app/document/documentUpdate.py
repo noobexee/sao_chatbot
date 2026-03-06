@@ -36,8 +36,10 @@ class DocumentUpdater:
             document_id=doc_id,
             doc_type=doc_data.type,
         )
-
-        index_single_json_file(chunks, embedder=self.embedder)
+        if doc_data.type == "ระเบียบ" :
+            index_single_json_file(chunks, embedder=self.embedder, is_regulation=True)
+        else :
+            index_single_json_file(chunks, embedder=self.embedder, is_regulation=False)
         return len(chunks)
 
     # ---------- Edit ----------
@@ -94,7 +96,10 @@ class DocumentUpdater:
             doc_type=doc_data.type,
         )
 
-        index_single_json_file(chunks, embedder=self.embedder)
+        if doc_data.type == "ระเบียบ" :
+            index_single_json_file(chunks, embedder=self.embedder, is_regulation=True)
+        else :
+            index_single_json_file(chunks, embedder=self.embedder, is_regulation=False)
         return len(chunks)
 
     # ---------- Delete ----------
