@@ -4,10 +4,10 @@ import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useInitialReview } from "../InitialReview-context";
 
+// --- Import API Functions from Libs ---
 import { analyzeDocument } from "../../../libs/InitialReview/analyzeDocument";
 import { saveAiResult } from "../../../libs/InitialReview/saveAIResult";
 import { ocrDocument } from "../../../libs/InitialReview/callOCR"; 
-
 
 // --- Types ---
 type criteriaStatus = "neutral" | "pending" | "success" | "fail";
@@ -89,12 +89,12 @@ const INDEPENDENT_ORGS = [
 ];
 
 function InitialReviewProcessContent() {
-    const searchParams = useSearchParams();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { currentFile } = useInitialReview();
 
   const [sessionId, setSessionId] = useState<string | null>(searchParams.get('session_id'));
-  const [userId, setUserId] = useState<string>("test_user_001"); //จำลอง User ID
+  const [userId, setUserId] = useState<string>("test_user_001");
 
   const [showChecklist, setShowChecklist] = useState(false);
   const [criterias, setCriterias] = useState<InitialReviewCriteria[]>(initialCriterias);
@@ -107,6 +107,7 @@ function InitialReviewProcessContent() {
   const [tempAuthorityReason, setTempAuthorityReason] = useState("");
 
   const [viewMode, setViewMode] = useState<ViewMode>("pdf");
+  const [originalText, setOriginalText] = useState<string>("");
   const [docText, setDocText] = useState<string>(""); 
   const [draftText, setDraftText] = useState(""); 
   const [isEditingText, setIsEditingText] = useState(false);
@@ -122,6 +123,7 @@ function InitialReviewProcessContent() {
       }
   }, [sessionId]);
 
+  // --- 1. OCR Logic ---
   useEffect(() => {
     const runOCR = async () => {
         if (!currentFile?.fileObj) return;
@@ -135,6 +137,7 @@ function InitialReviewProcessContent() {
         
         try {
             const result = await ocrDocument(currentFile.fileObj);
+            setOriginalText(result.text);
             setDocText(result.text);
             setDraftText(result.text);
             setViewMode("text");
@@ -147,6 +150,7 @@ function InitialReviewProcessContent() {
     runOCR();
   }, [currentFile]);
 
+  // --- 2. Start Analysis Logic ---
   const handleStartAnalysis = async () => {
     if (!draftText.trim()) { 
         alert("No text to analyze. Please wait for OCR or type manually."); 
@@ -162,7 +166,7 @@ function InitialReviewProcessContent() {
         const blob = new Blob([draftText], { type: "text/plain" });
         const fileToAnalyze = new File([blob], `${currentFile?.name || 'doc'}_edited.txt`, { type: "text/plain" });
 
-        const result = await analyzeDocument(fileToAnalyze,userId);
+        const result = await analyzeDocument(fileToAnalyze, userId, sessionId);
 
         if (result.status === "success" || result.data) {
             if (result.session_id) {
@@ -170,7 +174,7 @@ function InitialReviewProcessContent() {
                 router.replace(`/InitialReview/process?session_id=${result.session_id}`);
             }
 
-            const { criteria2, criteria4, criteria6, criteria8 } = result.data;
+            const { criteria1, criteria2, criteria4, criteria6, criteria8 } = result.data;
 
             setCriterias(prev => prev.map(c => {
                 if (c.id === 2 && criteria2) {
@@ -199,7 +203,7 @@ function InitialReviewProcessContent() {
                 return c;
             }));
             
-            setExpandedCriteriaIds(prev => [...new Set([...prev, 2, 4, 6, 8])]);
+            setExpandedCriteriaIds(prev => [...new Set([...prev, 1, 2, 4, 6, 8])]);
         } else {
             throw new Error(result.message || "Unknown error");
         }
@@ -211,10 +215,10 @@ function InitialReviewProcessContent() {
   };
 
   // --- 3. Save Logic ---
-    const handleSaveToDatabase = async () => {
-        if (!sessionId) {
-        alert("Error: ไม่มี Session ID กรุณากดปุ่ม Start Analysis ก่อนครับ");
-        return;
+  const handleSaveToDatabase = async () => {
+    if (!sessionId) {
+      alert("Error: ไม่มี Session ID กรุณากดปุ่ม Start Analysis ก่อนครับ");
+      return;
     }
 
     const unverified = criterias.filter(c => 
@@ -228,6 +232,16 @@ function InitialReviewProcessContent() {
 
     setIsSaving(true);
     try {
+      await saveAiResult({
+          user_id: userId,
+          session_id: sessionId,
+          criteria_id: 0,
+          result: {
+              original_text: originalText,
+              edited_text: docText
+          }
+      });
+
       const criteriasToSave = criterias.filter(s => s.ocrResult || s.status !== 'neutral');
       for (const criteria of criteriasToSave) {
           let resultData = criteria.ocrResult || {};
@@ -259,7 +273,6 @@ function InitialReviewProcessContent() {
               feedback: criteria.feedback
           });
       }
-      //alert(`บันทึกสำเร็จ! (Session: ${sessionId})`);
     } catch (error: any) {
       console.error("Save Error:", error);
       alert("Error saving data: " + error.message);
@@ -267,12 +280,13 @@ function InitialReviewProcessContent() {
       setIsSaving(false);
     }
     if (!sessionId) {
-    console.error("sessionId is undefined");
+        console.error("sessionId is undefined");
     return;
     }
     router.push(`/InitialReview/${sessionId}`);
   };
 
+  // --- Helpers & UI ---
   const toggleExpand = (id: number) => {
     setExpandedCriteriaIds(prev => prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]);
   };
@@ -302,6 +316,7 @@ function InitialReviewProcessContent() {
     }
   };
 
+  // --- HITL Handlers for Authority ---
   const handleVerifyAuthority = (id: number) => {
     setCriterias(prev => prev.map(c => {
         if (c.id === id && c.ocrResult?.authority) {
@@ -364,6 +379,7 @@ function InitialReviewProcessContent() {
     setEditingField(null); 
   };
 
+  // --- Render Functions ---
   const renderAuthorityHITL = (criteriaId: number, status: criteriaStatus, authority: AuthorityDetails) => {
     const isSuccess = status === 'success';
     const statusClass = getStatusClasses(status);
@@ -581,7 +597,6 @@ function InitialReviewProcessContent() {
 
                         {expandedCriteriaIds.includes(criteria.id) && (
                            <div className="mt-2 ml-4 p-4 border-l-2 border-gray-200 bg-gray-50 rounded-r-md">
-                              
                               {(criteria.id === 2 || criteria.id === 8) && criteria.ocrResult?.authority && (
                                   renderAuthorityHITL(criteria.id, criteria.status, criteria.ocrResult.authority)
                               )}

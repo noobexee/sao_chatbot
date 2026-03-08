@@ -2,26 +2,21 @@ import { getBaseUrl } from "../config";
 
 export interface AnalyzeResponse {
     status: string;
-    session_id?: string;
-    user_id?: string;
-    data: {
-        criteria1: any;
-        criteria2: any; 
-        criteria4: any; 
-        criteria6: any;
-        criteria8: any;
-        raw_text?: string;
-    };
+    session_id?: string; 
+    user_id?: string;    
+    data?: any;
     message?: string;
 }
 
-export async function analyzeDocument(file: File, user_id: string, session_id?: string): Promise<AnalyzeResponse> {
+export async function analyzeDocument(file: File, userId: string = "anonymous", sessionId?: string | null): Promise<AnalyzeResponse> {
     const baseUrl = getBaseUrl();
     const formData = new FormData();
+    
     formData.append("file", file);
-    formData.append("user_id", user_id);
-    if (session_id) {
-        formData.append("session_id", session_id);
+    formData.append("user_id", userId);
+    
+    if (sessionId) {
+        formData.append("session_id", sessionId);
     }
 
     try {

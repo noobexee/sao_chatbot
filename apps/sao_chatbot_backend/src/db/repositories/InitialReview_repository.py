@@ -8,23 +8,38 @@ class InitialReviewRepository:
     # 1. CORE: Save / Update Criteria Logs
     # ==========================================
     def save_criteria_log(self, user_id: str, session_id: str, criteria_id: int, ai_result: dict, feedback: str = None) -> bool:
-        """
-        บันทึก Log ผลการตรวจสอบรายข้อ (Criteria) โดยอิงตาม session_id และ user_id
-        """
         print(f"   [DB] Saving Log: User={user_id}, Session={session_id}, Criteria={criteria_id}")
         conn = None
         try:
             conn = get_db_connection()
             cur = conn.cursor()
 
-            # อัปเดตตารางให้รองรับ user_id และ session_id
+            # 🟢 1. จัดการ OCR Text ลง Table ใหม่ (criteria_id = 0)
+            if criteria_id == 0:
+                query_ocr = """
+                    INSERT INTO initial_review_ocr_texts 
+                    (session_id, user_id, original_text, edited_text, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, NOW(), NOW())
+                    ON CONFLICT (session_id) 
+                    DO UPDATE SET edited_text = EXCLUDED.edited_text, updated_at = NOW();
+                """
+                cur.execute(query_ocr, (
+                    session_id, 
+                    user_id, 
+                    ai_result.get('original_text', ''), 
+                    ai_result.get('edited_text', '')
+                ))
+                conn.commit()
+                cur.close()
+                return True
+
+            # 🟢 2. สำหรับ Criteria 1-8 บันทึกลงตาราง initial_review_logs ปกติ
             query_log = """
                 INSERT INTO initial_review_logs 
                 (user_id, session_id, criteria_id, field_type, ai_value, user_edit, user_value, result_correct, created_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
             """
 
-            # --- Logic คำนวณความถูกต้อง (Result Correctness) ---
             default_correctness = False if feedback == 'down' else True
 
             # =========================================================
@@ -42,10 +57,7 @@ class InitialReviewRepository:
                         v_user = v_ai
                         is_edited = False
 
-                    # บันทึกทีละฟิลด์ (entity, behavior, official, etc.)
-                    cur.execute(query_log, (
-                        user_id, session_id, 4, k, v_ai, is_edited, v_user, default_correctness
-                    ))
+                    cur.execute(query_log, (user_id, session_id, 4, k, v_ai, is_edited, v_user, default_correctness))
 
             # =========================================================
             # ✅ Criteria 2 & 8: อำนาจหน้าที่ (Authority HITL)
@@ -95,13 +107,9 @@ class InitialReviewRepository:
             # =========================================================
             else:
                 ai_val = json.dumps(ai_result, ensure_ascii=False)
-                # สำหรับ Manual check อาจจะมีการบันทึก user_selection มาด้วย
                 user_val = ai_result.get('manual_selection', '')
                 is_edited = bool(user_val)
-
-                cur.execute(query_log, (
-                    user_id, session_id, criteria_id, "raw_result", ai_val, is_edited, user_val, default_correctness
-                ))
+                cur.execute(query_log, (user_id, session_id, criteria_id, "raw_result", ai_val, is_edited, user_val, default_correctness))
 
             conn.commit()
             cur.close()
