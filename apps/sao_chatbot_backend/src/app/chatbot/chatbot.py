@@ -14,14 +14,6 @@ import logging
 from langchain_core.globals import set_debug
 
 logger = logging.getLogger(__name__)
-
-class LegalResponseSchema(BaseModel):
-    answer_text: str = Field(description="The natural Thai response starting with 'จากข้อ... ของระเบียบ...'")
-    used_law_names: List[str] = Field(description="List of exact law_names or guideline_names from the context that were used to answer the question.")
-
-class FileResponse(BaseModel):
-    answer_text: str = Field(description="A polite, formal Thai response (e.g., 'ขออนุญาตนำส่งเอกสาร').")
-    target_files: List[str] = Field(description="List of exact filenames found. Empty list if none.")
     
 class Chatbot:
     def __init__(self):
@@ -47,11 +39,18 @@ class Chatbot:
             formatted_history = []
             for row in rows:
                 timestamp = row[2].isoformat() if row[2] else ""
+                
                 formatted_history.append({"role": "user", "content": row[0], "created_at": timestamp})
-                formatted_history.append({"role": "assistant", "content": row[1], "created_at": timestamp})
+                
+                formatted_history.append({
+                    "role": "assistant", 
+                    "content": row[1], 
+                    "created_at": timestamp,
+                    "references": row[3] if len(row) > 3 else [] 
+                })
             return formatted_history
         except Exception as e:
-            logger.warning(f"Session history retrieval failed for {session_id}. Proceeding with empty history.")
+            logger.warning(f"Session history retrieval failed: {e}")
             return []
 
     def get_user_sessions(self, user_id: str) -> List[Dict]:
@@ -166,10 +165,18 @@ class Chatbot:
             }
             
             handler = handlers.get(route, handlers["LEGAL_RAG"])
-            response_text, refs_data = await handler(query, history_messages, self.llm.get_model())
+            result = await handler(query, history_messages, self.llm.get_model())
+            response_text = result.answer
+            refs_data = result.ref
 
             try:
-                self.repository.save_message(user_id, session_id, query, response_text)
+                self.repository.save_message(
+                    user_id, 
+                    session_id, 
+                    query, 
+                    response_text, 
+                    refs=refs_data
+                )
             except Exception as db_err:
                 logger.error(f"Database save failed: {db_err}")
 
@@ -179,7 +186,7 @@ class Chatbot:
             logger.error(f"{log_prefix} Failed to process: {e}", exc_info=True)
             return RAGResponse(
                 answer="ขออภัย ระบบขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้งในภายหลัง",
-                ref=[]
+                ref={}
             )  
 
 chatbot = Chatbot()

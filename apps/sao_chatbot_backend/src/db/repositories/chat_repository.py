@@ -3,17 +3,16 @@ from typing import List, Tuple, Optional, Dict
 from src.db.connection import get_db_connection
 
 class ChatRepository:
-    def save_message(self, user_id: str, session_id: str, user_msg: str, ai_msg: str, context: list = None):
+    def save_message(self, user_id: str, session_id: str, user_msg: str, ai_msg: str, refs: list = None):
         conn = None
         try:
             conn = get_db_connection()
             conn.autocommit = True
             cur = conn.cursor()
-            print(context)
             
             query = """
                 INSERT INTO conversations 
-                (user_id, session_id, user_message, ai_message, retrieval_context)
+                (user_id, session_id, user_message, ai_message, refs)
                 VALUES (%s, %s, %s, %s, %s)
             """
             cur.execute(query, (
@@ -21,26 +20,23 @@ class ChatRepository:
                 session_id, 
                 user_msg, 
                 ai_msg, 
-                json.dumps(context or [])
+                json.dumps(refs or [])
             ))
             cur.close()
         except Exception as e:
-            print(f"❌ DB Insert Error: {e}")
+            print(f"DB Insert Error: {e}")
             raise e
         finally:
             if conn: conn.close()
 
     def get_messages_by_session(self, user_id: str, session_id: str) -> List[Tuple]:
-        """
-        Fetches raw rows (user_msg, ai_msg, created_at) for a specific session.
-        """
         conn = None
         try:
             conn = get_db_connection()
             cur = conn.cursor()
             
             query = """
-                SELECT user_message, ai_message, created_at
+                SELECT user_message, ai_message, created_at, refs
                 FROM conversations
                 WHERE user_id = %s AND session_id = %s
                 ORDER BY created_at ASC

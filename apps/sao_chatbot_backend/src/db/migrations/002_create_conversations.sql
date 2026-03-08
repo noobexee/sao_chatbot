@@ -1,14 +1,10 @@
 CREATE TABLE IF NOT EXISTS conversations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-
     session_id UUID NOT NULL,
-    
     user_message TEXT NOT NULL,
     ai_message TEXT NOT NULL,
-    
-    retrieval_context JSONB DEFAULT '[]',
+    refs JSONB DEFAULT '[]',    
     custom_title TEXT,
     is_pinned BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
