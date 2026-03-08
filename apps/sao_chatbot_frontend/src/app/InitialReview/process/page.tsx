@@ -62,7 +62,7 @@ interface InitialReviewCriteria {
     title: string;
     reason?: string;
     people?: Person[];
-    details?: criteria4Details; 
+    details?: any; 
     authority?: AuthorityDetails; 
   };
 }
@@ -107,7 +107,7 @@ function InitialReviewProcessContent() {
   const [tempAuthorityReason, setTempAuthorityReason] = useState("");
 
   const [viewMode, setViewMode] = useState<ViewMode>("pdf");
-  const [originalText, setOriginalText] = useState<string>("");
+  const [originalText, setOriginalText] = useState<string>(""); 
   const [docText, setDocText] = useState<string>(""); 
   const [draftText, setDraftText] = useState(""); 
   const [isEditingText, setIsEditingText] = useState(false);
@@ -118,7 +118,6 @@ function InitialReviewProcessContent() {
 
   useEffect(() => {
       if (sessionId && !docText) {
-          console.log(`[INFO] กำลังเปิด Session เก่า: ${sessionId}`);
           setShowChecklist(true);
       }
   }, [sessionId]);
@@ -137,7 +136,7 @@ function InitialReviewProcessContent() {
         
         try {
             const result = await ocrDocument(currentFile.fileObj);
-            setOriginalText(result.text);
+            setOriginalText(result.text); 
             setDocText(result.text);
             setDraftText(result.text);
             setViewMode("text");
@@ -159,14 +158,14 @@ function InitialReviewProcessContent() {
 
     setShowChecklist(true);
     setCriterias(prev => prev.map(c => 
-        ([2, 4, 6, 8].includes(c.id)) ? { ...c, isProcessing: true } : c
+        ([1, 2, 4, 6, 8].includes(c.id)) ? { ...c, isProcessing: true } : c
     ));
 
     try {
         const blob = new Blob([draftText], { type: "text/plain" });
         const fileToAnalyze = new File([blob], `${currentFile?.name || 'doc'}_edited.txt`, { type: "text/plain" });
 
-        const result = await analyzeDocument(fileToAnalyze, userId, sessionId);
+        const result = await analyzeDocument(fileToAnalyze, userId, sessionId || undefined);
 
         if (result.status === "success" || result.data) {
             if (result.session_id) {
@@ -203,7 +202,7 @@ function InitialReviewProcessContent() {
                 return c;
             }));
             
-            setExpandedCriteriaIds(prev => [...new Set([...prev, 1, 2, 4, 6, 8])]);
+            setExpandedCriteriaIds([1, 2, 3, 4, 5, 6, 7, 8]);
         } else {
             throw new Error(result.message || "Unknown error");
         }
@@ -220,14 +219,21 @@ function InitialReviewProcessContent() {
       alert("Error: ไม่มี Session ID กรุณากดปุ่ม Start Analysis ก่อนครับ");
       return;
     }
-
-    const unverified = criterias.filter(c => 
+    const unverifiedAuto = criterias.filter(c => 
         (c.id === 2 || c.id === 8) && c.ocrResult?.authority && !c.ocrResult.authority.isVerified
     );
-
-    if (unverified.length > 0) {
-        const confirmSave = window.confirm(`Warning: Criteria ${unverified.map(c => c.id).join(", ")} ยังไม่ได้กดยืนยันผล (Verified) ยืนยันที่จะบันทึกหรือไม่?`);
-        if (!confirmSave) return;
+    const unverifiedManual = criterias.filter(c => 
+        (c.id === 3 || c.id === 5 || c.id === 7) && !c.selectedOption
+    );
+    if (unverifiedAuto.length > 0 || unverifiedManual.length > 0) {
+        const missingIds = [
+            ...unverifiedAuto.map(c => c.id),
+            ...unverifiedManual.map(c => c.id)
+        ].sort((a, b) => a - b);
+        
+        setExpandedCriteriaIds(prev => [...new Set([...prev, ...missingIds])]);
+        alert(`⚠️ ไม่สามารถบันทึกได้!\n\nกรุณายืนยันผล (ข้อ 2, 8) และเลือกผลการประเมิน (ข้อ 3, 5, 7) ให้ครบถ้วน\n\nข้อที่ยังขาดอยู่คือ: ข้อ ${missingIds.join(", ")}`);
+        return; 
     }
 
     setIsSaving(true);
@@ -235,14 +241,14 @@ function InitialReviewProcessContent() {
       await saveAiResult({
           user_id: userId,
           session_id: sessionId,
-          criteria_id: 0,
+          criteria_id: 0, 
           result: {
               original_text: originalText,
               edited_text: docText
           }
       });
 
-      const criteriasToSave = criterias.filter(s => s.ocrResult || s.status !== 'neutral');
+      const criteriasToSave = criterias.filter(s => s.ocrResult || s.status !== 'neutral' || s.selectedOption);
       for (const criteria of criteriasToSave) {
           let resultData = criteria.ocrResult || {};
           
@@ -275,7 +281,7 @@ function InitialReviewProcessContent() {
       }
     } catch (error: any) {
       console.error("Save Error:", error);
-      alert("Error saving data: " + error.message);
+      alert("เกิดข้อผิดพลาดในการบันทึก: " + error.message);
     } finally {
       setIsSaving(false);
     }
@@ -583,6 +589,7 @@ function InitialReviewProcessContent() {
                              
                              {!expandedCriteriaIds.includes(criteria.id) && !criteria.isProcessing && criteria.status !== 'neutral' && (
                                 <div className={`mt-1 text-xs font-bold ${criteria.status === 'success' ? 'text-green-700' : 'text-red-700'}`}>
+                                    {criteria.type === "auto" && criteria.id === 1 && (criteria.status === 'success' ? 'Result: Pass' : (criteria.status === 'pending' ? 'Result: Pending' : 'Result: Fail'))}
                                     {criteria.type === "auto" && criteria.id === 2 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
                                     {criteria.type === "auto" && criteria.id === 4 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
                                     {criteria.type === "auto" && criteria.id === 6 && (criteria.status === 'success' ? 'Result: Pass' : 'Result: Fail')}
@@ -603,10 +610,10 @@ function InitialReviewProcessContent() {
 
                               {criteria.type === "manual" && criteria.options && (
                                  <div className="space-y-2">
-                                    <p className="text-xs font-bold text-gray-500 mb-2 uppercase">Manual Verification</p>
+                                    <p className="text-xs font-bold text-gray-500 mb-2 uppercase">Manual Verification <span className="text-red-500">*จำเป็น</span></p>
                                     {criteria.options.map((option) => (
-                                      <label key={option.label} className="flex items-center gap-3 cursor-pointer group p-2 rounded hover:bg-white hover:shadow-sm">
-                                        <input type="radio" name={`criteria-${criteria.id}`} className="h-4 w-4 text-[#a83b3b]" checked={criteria.selectedOption === option.label} onChange={() => handleOptionSelect(criteria.id, option.label, option.value as "success"|"fail")} />
+                                      <label key={option.label} className={`flex items-center gap-3 cursor-pointer group p-2 rounded hover:shadow-sm border ${criteria.selectedOption === option.label ? 'bg-blue-50 border-blue-200' : 'bg-white border-transparent hover:border-gray-200'}`}>
+                                        <input type="radio" name={`criteria-${criteria.id}`} className="h-4 w-4 text-blue-600" checked={criteria.selectedOption === option.label} onChange={() => handleOptionSelect(criteria.id, option.label, option.value as "success"|"fail")} />
                                         <span className="text-sm">{option.label}</span>
                                       </label>
                                     ))}
@@ -639,7 +646,7 @@ function InitialReviewProcessContent() {
                                 </div>
                               )}
 
-                              {criteria.ocrResult && !(criteria.id === 2 || criteria.id === 8) && (
+                              {criteria.ocrResult && !(criteria.id === 2 || criteria.id === 8) && !(criteria.id === 1) && (
                                 <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
                                     <span className="text-xs text-gray-400">Is this result correct?</span>
                                     <button onClick={(e) => { e.stopPropagation(); handleFeedback(criteria.id, "up"); }} className={`p-1.5 rounded transition-colors ${criteria.feedback === "up" ? "bg-green-50 text-green-600 ring-1 ring-green-200" : "text-gray-400 hover:text-green-600 hover:bg-gray-50"}`} title="Correct">
