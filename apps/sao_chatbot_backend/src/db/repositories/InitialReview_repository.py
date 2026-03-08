@@ -95,7 +95,7 @@ class InitialReviewRepository:
         conn = None
         try:
             conn = get_db_connection()
-            cur = conn.cursor(dictionary=True)
+            cur = conn.cursor()
 
             query = """
                 SELECT session_id, MAX(created_at) as last_updated, COUNT(DISTINCT criteria_id) as criteria_count
@@ -115,17 +115,16 @@ class InitialReviewRepository:
             if conn: conn.close()
 
     def get_review_by_session(self, user_id: str, session_id: str) -> List[Dict]:
-        """ดึงข้อมูล Logs ทั้งหมดภายใต้ Session ID (เอกสารฉบับเดียว)"""
         conn = None
         try:
             conn = get_db_connection()
-            cur = conn.cursor(dictionary=True)
+            cur = conn.cursor()
             
             query = """
-                SELECT criteria_id, field_type, ai_value, user_edit, user_value, result_correct, created_at
+                SELECT criteria_id, field_type, ai_value, user_edit, user_value, result_correct
                 FROM initial_review_logs 
                 WHERE user_id = %s AND session_id = %s
-                ORDER BY criteria_id ASC, created_at ASC
+                ORDER BY criteria_id ASC
             """
             cur.execute(query, (user_id, session_id))
             rows = cur.fetchall()
@@ -156,3 +155,4 @@ class InitialReviewRepository:
             return False
         finally:
             if conn: conn.close()
+

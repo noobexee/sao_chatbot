@@ -22,8 +22,8 @@ def create_user():
         conn = psycopg2.connect(db_url)
         cur = conn.cursor()
 
-        USERNAME = "test_user"
-        PASSWORD = "password123"
+        USERNAME = "user"
+        PASSWORD = "password"
         ROLE = "user"  # 👉 เปลี่ยนได้: user / admin / document_manager
 
         # check existing
