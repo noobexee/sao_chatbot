@@ -94,7 +94,7 @@ function InitialReviewProcessContent() {
   const { currentFile } = useInitialReview();
 
   const [sessionId, setSessionId] = useState<string | null>(searchParams.get('session_id'));
-  const [userId, setUserId] = useState<string>("test_user_067"); //จำลอง User ID
+  const [userId, setUserId] = useState<string>("test_user_001"); //จำลอง User ID
 
   const [showChecklist, setShowChecklist] = useState(false);
   const [criterias, setCriterias] = useState<InitialReviewCriteria[]>(initialCriterias);
@@ -259,7 +259,7 @@ function InitialReviewProcessContent() {
               feedback: criteria.feedback
           });
       }
-      alert(`บันทึกสำเร็จ! (Session: ${sessionId})`);
+      //alert(`บันทึกสำเร็จ! (Session: ${sessionId})`);
     } catch (error: any) {
       console.error("Save Error:", error);
       alert("Error saving data: " + error.message);

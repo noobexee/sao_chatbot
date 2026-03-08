@@ -147,30 +147,26 @@ class InitialReviewRepository:
             if conn: conn.close()
 
     def get_review_by_session(self, user_id: str, session_id: str) -> List[Dict]:
-        conn = None
-        try:
-            conn = get_db_connection()
-            cur = conn.cursor()
-            
-            query = """
-                SELECT criteria_id, field_type, ai_value, user_edit, user_value, result_correct
-                FROM initial_review_logs 
-                WHERE user_id = %s AND session_id = %s
-                ORDER BY criteria_id ASC
-            """
-            cur.execute(query, (user_id, session_id))
-            
-            # 🟢 เพิ่ม: แปลงผลลัพธ์เป็น Dictionary ให้รองรับ PostgreSQL
-            columns = [desc[0] for desc in cur.description]
-            rows = [dict(zip(columns, row)) for row in cur.fetchall()]
-            
-            cur.close()
-            return rows
-        except Exception as e:
-            print(f"❌ DB Fetch Error: {e}")
-            return []
-        finally:
-            if conn: conn.close()
+            conn = None
+            try:
+                conn = get_db_connection()
+                cur = conn.cursor()
+
+                query = """
+                    SELECT criteria_id, field_type, ai_value, user_edit, user_value, result_correct
+                    FROM initial_review_logs 
+                    WHERE user_id = %s AND session_id = %s
+                    ORDER BY criteria_id ASC
+                """
+                cur.execute(query, (user_id, session_id))
+                rows = cur.fetchall()
+                cur.close()
+                return rows
+            except Exception as e:
+                print(f"❌ DB Fetch Error: {e}")
+                return []
+            finally:
+                if conn: conn.close()
 
     def delete_session(self, user_id: str, session_id: str) -> bool:
         """ลบประวัติการตรวจสอบของ Session นั้นๆ"""

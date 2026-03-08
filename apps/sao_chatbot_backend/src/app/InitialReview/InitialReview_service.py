@@ -149,6 +149,8 @@ class InitialReviewService:
         criteria_map = defaultdict(dict)
 
         for r in rows:
+            print("Type of r:", type(r))
+            print(r)
             criteria_id = r[0]
             field_type = r[1]
             criteria_map[criteria_id][field_type] = r

@@ -13,7 +13,7 @@ export default function InitialReviewMainPage() {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     //  จำลอง User ID
-    const userId = "test_user_067"; 
+    const userId = "test_user_001"; 
 
     useEffect(() => {
         fetchHistory();
@@ -136,7 +136,7 @@ export default function InitialReviewMainPage() {
                                         </td>
                                         <td className="p-4 flex items-center justify-center gap-4">
                                             <button 
-                                                onClick={() => router.push(`/InitialReview/process?session_id=${session.session_id}`)}
+                                                onClick={() => router.push(`/InitialReview/${session.session_id}`)}
                                                 className="text-blue-600 hover:text-blue-800 text-sm font-semibold transition-colors"
                                             >
                                                 เปิดดู
