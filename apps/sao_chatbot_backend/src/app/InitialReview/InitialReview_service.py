@@ -1,3 +1,4 @@
+from collections import defaultdict
 import uuid
 import io
 import os
@@ -6,6 +7,7 @@ import asyncio
 import tempfile
 from fastapi import UploadFile
 
+from src.app.InitialReview.InitialReviewSchemas import ReviewSummary
 from src.db.repositories.InitialReview_repository import InitialReviewRepository
 from src.app.llm import InitialReview_agents
 
@@ -134,3 +136,112 @@ class InitialReviewService:
         media_type = "application/pdf" if file_name.lower().endswith(".pdf") else "image/jpeg"
         
         return io.BytesIO(file_content), media_type
+    
+    def get_InitialReview_summary(self, user_id: str, InitialReview_id: str):
+        rows = self.repo.get_review_by_session(
+            user_id=user_id,
+            session_id=InitialReview_id
+        )
+
+        if not rows:
+            return None
+
+        criteria_map = defaultdict(dict)
+
+        for r in rows:
+            criteria_id = r[0]
+            field_type = r[1]
+            criteria_map[criteria_id][field_type] = r
+
+        def pick(row):
+            return row[4] if row[5] else row[2]
+
+        summary = ReviewSummary()
+
+        # -------- Criteria 2 --------
+        if 2 in criteria_map:
+            result_row = criteria_map[2].get("criteria2_result")
+
+            if result_row:
+                value = pick(result_row)
+                summary.criteria_2 = (value == "เป็น")
+
+        # -------- Criteria 3 --------
+        if 3 in criteria_map:
+            row = criteria_map[3].get("raw_result")
+
+            if row:
+                value = row[4]  # always user_value
+
+                if value == "ไม่เกิน":
+                    summary.criteria_3 = True
+                elif value == "เกิน":
+                    summary.criteria_3 = False
+                else:
+                    summary.criteria_3 = None
+
+        # -------- Criteria 4 --------
+        if 4 in criteria_map:
+            c4 = criteria_map[4]
+
+            entity = pick(c4["entity"]) if "entity" in c4 else None
+            behavior = pick(c4["behavior"]) if "behavior" in c4 else None
+            official = pick(c4["official"]) if "official" in c4 else None
+            date = pick(c4["date"]) if "date" in c4 else None
+            location = pick(c4["location"]) if "location" in c4 else None
+
+            summary.criteria_4 = [
+                entity is not None,
+                behavior is not None,
+                official is not None,
+                (date is not None and location is not None)
+            ]
+
+        # -------- Criteria 5 --------
+        if 5 in criteria_map:
+            row = criteria_map[5].get("raw_result")
+
+            if row:
+                value = row[4]  # always user_value
+                summary.criteria_5 = (value == "ไม่เคยแจ้ง")
+
+        # -------- Criteria 6 --------
+        if 6 in criteria_map:
+            row = criteria_map[6].get("people_list")
+
+            if row:
+                # we only check existence for now
+                people = pick(row)
+
+                summary.criteria_6 = [
+                    None,           # complainant can be null
+                    bool(people),   # accused exists
+                    bool(people)    # witness exists
+                ]
+
+        # -------- Criteria 7 --------
+        if 7 in criteria_map:
+            row = criteria_map[7].get("raw_result")
+
+            if row:
+                value = row[4]  # always user_value
+
+                if value == "เป็น":
+                    summary.criteria_7 = {True: "พบหน่วยงานที่เกี่ยวข้อง"}
+                else:
+                    summary.criteria_7 = {False: None}
+
+        # -------- Criteria 8 --------
+        if 8 in criteria_map:
+            result_row = criteria_map[8].get("criteria8_result")
+            reason_row = criteria_map[8].get("criteria8_reason")
+
+            if result_row:
+                result = pick(result_row) == "เป็น"
+                reason = pick(reason_row) if reason_row else ""
+
+                summary.criteria_8 = {result: reason}
+        print(summary)
+        return summary
+
+        

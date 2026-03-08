@@ -9,6 +9,7 @@ import { analyzeDocument } from "../../../libs/InitialReview/analyzeDocument";
 import { saveAiResult } from "../../../libs/InitialReview/saveAIResult";
 import { ocrDocument } from "../../../libs/InitialReview/callOCR"; 
 
+
 // --- Types ---
 type criteriaStatus = "neutral" | "pending" | "success" | "fail";
 type FeedbackType = "up" | "down" | null;
@@ -91,7 +92,7 @@ const INDEPENDENT_ORGS = [
 ];
 
 function InitialReviewProcessContent() {
-  const searchParams = useSearchParams();
+    const searchParams = useSearchParams();
   const router = useRouter();
   const { currentFile } = useInitialReview();
 
@@ -229,10 +230,10 @@ function InitialReviewProcessContent() {
   };
 
   // --- 3. Save Logic ---
-  const handleSaveToDatabase = async () => {
-    if (!sessionId) {
-      alert("Error: ไม่มี Session ID กรุณากดปุ่ม Start Analysis ก่อนครับ");
-      return;
+    const handleSaveToDatabase = async () => {
+        if (!sessionId) {
+        alert("Error: ไม่มี Session ID กรุณากดปุ่ม Start Analysis ก่อนครับ");
+        return;
     }
 
     // Check for unverified items
@@ -286,6 +287,11 @@ function InitialReviewProcessContent() {
     } finally {
       setIsSaving(false);
     }
+    if (!sessionId) {
+    console.error("sessionId is undefined");
+    return;
+    }
+    router.push(`/InitialReview/${sessionId}`);
   };
 
   // --- Helpers & UI ---
