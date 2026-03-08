@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 
 class SaveResultRequest(BaseModel):
     """
@@ -18,3 +18,27 @@ class SessionResponse(BaseModel):
     session_id: str
     last_updated: str
     criteria_count: int
+
+from pydantic import BaseModel
+from typing import Optional, List, Dict
+
+class ReviewSummary(BaseModel):
+    OCR_text: Optional[str] = None
+
+    criteria_1: Optional[bool] = None
+    criteria_2: Optional[bool] = None
+    criteria_3: Optional[bool] = None
+
+    # size 4
+    criteria_4: Optional[List[bool]] = None
+
+    criteria_5: Optional[bool] = None
+
+    # size 3 (first can be None)
+    criteria_6: Optional[List[Optional[bool]]] = None
+
+    # if True must have value, if False value must be None
+    criteria_7: Optional[Dict[bool, Optional[str]]] = None
+
+    # True -> reason string
+    criteria_8: Optional[Dict[bool, str]] = None

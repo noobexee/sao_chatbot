@@ -1,0 +1,338 @@
+<form id="complaint_review">
+
+  <!-- ================= FACTS ================= -->
+  <section id="complaint_facts">
+    <title>ข้อเท็จจริงจากเรื่องร้องเรียน (ทางเว็บไซต์ หรือไปรษณีย์อิเล็กทรอนิกส์ของสำนักงาน) (ประเด็นร้องเรียน)</title>
+    <field name="ocr_content" type="textarea">
+      {{OCR_content}}
+    </field>
+  </section>
+
+
+  <!-- ================= CRITERIA 1 ================= -->
+  <section name="jurisdiction_check">
+
+    <title>
+      เรื่องร้องเรียนอยู่ในหน้าที่และเขตอำนาจการตรวจสอบของสำนัก
+    </title>
+
+    <checkbox-group
+      name="jurisdiction"
+      criteria="1"
+      type="boolean"
+    >
+      <option value="in_scope" when="true">อยู่</option>
+      <option value="out_of_scope" when="false">ไม่อยู่</option>
+    </checkbox-group>
+
+    <note>(หากไม่อยู่ ข้ามไป ข้อ ๘)</note>
+
+  </section>
+
+
+  <!-- ================= CRITERIA 2,3,4,5 ================= -->
+  <section>
+
+    <title>หลักเกณฑ์ตามข้อ ๑๘</title>
+
+
+    <!-- Criteria 2 -->
+    <question id="criteria_2">
+
+      <text>
+        ๑. เป็นเรื่องที่อยู่ในหน้าที่และอำนาจในการตรวจสอบของ ผตง.
+        ตาม พ.ร.ป.ว่าด้วยการตรวจเงินแผ่นดิน พ.ศ. ๒๕๖๑
+        เนื่องจาก เป็นเรื่องเกี่ยวกับการใช้จ่ายเงินงบประมาณ
+      </text>
+
+      <checkbox-group
+        name="rule18_budget_check"
+        criteria="2"
+        type="boolean"
+      >
+        <option value="yes" when="true">อยู่</option>
+        <option value="no" when="false">ไม่อยู่</option>
+      </checkbox-group>
+
+    </question>
+
+
+    <!-- Criteria 3 -->
+    <question id="criteria_3">
+
+      <text>
+        ๒. เป็นเรื่องที่เกิดขึ้นมาแล้วไม่เกิน ๕ ปี
+        นับแต่วันที่เกิดเหตุจนถึงวันที่ สตง. ได้รับเรื่อง
+      </text>
+
+      <checkbox-group
+        name="time_limit"
+        criteria="3"
+        type="boolean"
+      >
+        <option value="within_5_years" when="true">ไม่เกิน</option>
+        <option value="over_5_years" when="false">เกิน</option>
+        <option value="unknown" type="null">ไม่ระบุ</option>
+      </checkbox-group>
+
+    </question>
+
+
+    <!-- Criteria 4 -->
+    <question id="criteria_4">
+
+      <text>๓. ระบุรายละเอียดเพียงพอที่จะตรวจสอบได้</text>
+
+      <subquestion name="officer_name">
+        <text> ๓.๑ ชื่อหรือตำแหน่งของเจ้าหน้าที่หน่วยรับตรวจผู้ถูกร้องเรียน </text>
+
+        <checkbox-group
+          name="officer"
+          criteria="4"
+          subcriteria="4.1"
+          type="boolean"
+        >
+          <option value="enough" when="true">เพียงพอ</option>
+          <option value="unclear" when="false">ไม่ชัดเจน/ไม่ระบุ</option>
+        </checkbox-group>
+      </subquestion>
+
+      <subquestion name="organization_name">
+        <text> ๓.๒ ชื่อหน่วยรับตรวจ หรือบุคคลที่เกี่ยวข้อง </text>
+
+        <checkbox-group
+          name="organization"
+          criteria="4"
+          subcriteria="4.2"
+          type="boolean"
+        >
+          <option value="enough" when="true">เพียงพอ</option>
+          <option value="unclear" when="false">ไม่ชัดเจน/ไม่ระบุ</option>
+        </checkbox-group>
+      </subquestion>
+
+      <subquestion name="time_place">
+        <text> ๓.๓ วัน เวลา หรือช่วงเวลา สถานที่ที่มีการกระทำผิด </text>
+
+        <checkbox-group
+          name="time_place"
+          criteria="4"
+          subcriteria="4.3"
+          type="boolean"
+        >
+          <option value="enough" when="true">เพียงพอ</option>
+          <option value="unclear" when="false">ไม่ชัดเจน/ไม่ระบุ</option>
+        </checkbox-group>
+      </subquestion>
+
+      <subquestion name="behavior">
+        <text> ๓.๔ พฤติการณ์แห่งการกระทำผิด </text>
+
+        <checkbox-group
+          name="behavior_detail"
+          criteria="4"
+          subcriteria="4.4"
+          type="boolean"
+        >
+          <option value="enough" when="true">เพียงพอ</option>
+          <option value="unclear" when="false">ไม่ชัดเจน/ไม่ระบุ</option>
+        </checkbox-group>
+      </subquestion>
+    </question>
+
+
+    <!-- Criteria 5 -->
+    <question id="criteria_5">
+      <text> ๔. เป็นเรื่องที่ ผตง. หรือผู้ที่ ผตง. มอบหมาย แจ้งผลการตรวจสอบ </text>
+      <checkbox-group
+        name="notification_status"
+        criteria="5"
+        type="boolean"
+      >
+        <option value="never_notified" when="true">ไม่เคยแจ้ง</option>
+        <option value="already_notified" when="false">เคยแจ้ง</option>
+      </checkbox-group>
+
+    </question>
+  </section>
+
+  <!-- ================= CRITERIA 6 ================= -->
+  <section>
+    <title> เงื่อนไขตามข้อ ๑๙ รายละเอียดเกี่ยวกับผู้ร้องเรียน </title>
+    <question id="criteria_6_1">
+      <text>ชื่อ - สกุล</text>
+      <checkbox-group
+        name="name_status"
+        criteria="6"
+        subcriteria="6.1"
+        type="boolean"
+      >
+        <option value="complete" when="true">ครบถ้วน</option>
+        <option value="incomplete" when="false">ไม่ครบถ้วน/ไม่ระบุ</option>
+        <option value="fake_name" type="null">ใช้ชื่อปลอม</option>
+      </checkbox-group>
+    </question>
+
+    <question id="criteria_6_2">
+      <text>เลขประจำตัวประชาชน</text>
+      <checkbox-group
+        name="citizen_id_status"
+        criteria="6"
+        subcriteria="6.2"
+        type="boolean"
+      >
+        <option value="present" when="true">มี</option>
+        <option value="missing" when="false">ไม่มี/ไม่สมบูรณ์</option>
+      </checkbox-group>
+    </question>
+
+    <question id="criteria_6_3">
+      <text> ที่อยู่หรือข้อมูลติดต่อของผู้ร้องเรียน </text>
+      <checkbox-group
+        name="address_status"
+        criteria="6"
+        subcriteria="6.3"
+        type="boolean"
+      >
+        <option value="enough" when="true">เพียงพอ</option>
+        <option value="unclear" when="false">ไม่ชัดเจน/ไม่ระบุ</option>
+      </checkbox-group>
+    </question>
+  </section>
+
+
+  <!-- ================= CRITERIA 7 ================= -->
+  <section>
+    <title>เงื่อนไขตามข้อ ๒๐</title>
+    <question id="criteria_7">
+      <text> เป็นเรื่องร้องเรียนที่อยู่ระหว่างการดำเนินการของหน่วยงานอื่น </text>
+      <checkbox-group
+        name="other_agency_status"
+        criteria="7"
+        type="boolean"
+      >
+
+        <option value="not_found" when="true"> ไม่ปรากฏข้อเท็จจริง </option>
+        <option value="found" when="false"> ปรากฏข้อเท็จจริง </option>
+      </checkbox-group>
+      <field
+        name="which_org"
+        criteria="7"
+        type="text"
+      >
+        {{which_org}}
+      </field>
+    </question>
+  </section>
+
+  <!-- ================= CRITERIA 8 ================= -->
+  <section>
+
+    <title>
+      หลักเกณฑ์และเงื่อนไขตาม ข้อ ๒๑
+      การให้ความร่วมมือระหว่างองค์กรอิสระอื่น
+    </title>
+
+    <!-- Case 1 -->
+    <question id="criteria_8_case1">
+
+      <checkbox-group
+        name="rule21_outside_scope"
+        criteria="8"
+        type="boolean"
+      >
+
+        <option when="true">
+          ประเด็นร้องเรียนไม่อยู่ในหน้าที่และอำนาจตรวจสอบของ ผตง. แต่อยู่ในหน้าที่และอำนาจดำเนินการขององค์กรอิสระอื่น
+        </option>
+
+        <option when="false">
+          ประเด็นร้องเรียนบางประเด็นอยู่ในหน้าที่และอำนาจตรวจสอบของ ผตง. และมีบางประเด็นอยู่ในหน้าที่และอำนาจดำเนินการขององค์กรอิสระอื่น
+        </option>
+
+      </checkbox-group>
+
+      <field name="other_org_1" type="text">
+        {{user_input}}
+      </field>
+
+    </question>
+
+
+    <!-- Case 2 -->
+    <question id="criteria_8_case2">
+
+      <checkbox-group
+        name="rule21_possible_offense"
+        criteria="8"
+        type="user_input"
+      >
+
+        <option>
+          ประเด็นร้องเรียนอยู่ในหน้าที่และอำนาจตรวจสอบของ ผตง. และอาจเข้าลักษณะเป็นการกระทำความผิดที่อยู่ในหน้าที่และอำนาจขององค์กรอิสระอื่น
+        </option>
+
+      </checkbox-group>
+
+
+      <subquestion name="related_laws">
+
+        <checkbox-group
+          name="related_laws"
+          type="multi"
+        >
+
+          <option>
+            ตามกฎหมายว่าด้วยความผิดเกี่ยวกับการเสนอราคาต่อหน่วยงานของรัฐ
+          </option>
+
+          <option>
+            ตามกฎหมายคณะกรรมการการเลือกตั้ง
+          </option>
+
+          <option>
+            ตามกฎหมายผู้ตรวจการแผ่นดิน
+          </option>
+
+          <option>
+            ตามกฎหมายคณะกรรมการสิทธิมนุษยชนแห่งชาติ
+          </option>
+
+        </checkbox-group>
+
+      </subquestion>
+
+    </question>
+
+  </section>
+
+
+  <!-- ================= REVIEW SUMMARY ================= -->
+  <section id="review_summary" name="review_summary">
+    <title>สรุปความเห็นของผู้พิจารณา</title>
+    <decision-group name="review_decision">
+
+      <decision id="accept_case">
+        รับเรื่องไว้ตรวจสอบ
+        <field name="accept_issue">{{user_input}}</field>
+      </decision>
+
+      <decision id="reject_case">
+        ไม่รับเรื่องไว้ตรวจสอบ
+        <field name="reject_issue">{{user_input}}</field>
+        <field name="reject_reason">{{user_input}}</field>
+      </decision>
+
+      <decision id="reject_but_forward">
+        ไม่รับเรื่องไว้ตรวจสอบ แต่เข้าหลักเกณฑ์ข้อ ๒๑
+        <field name="forward_issue">{{user_input}}</field>
+      </decision>
+
+      <decision id="other">
+        อื่น ๆ
+        <field name="other_comment">{{user_input}}</field>
+      </decision>
+
+    </decision-group>
+  </section>
+</form>

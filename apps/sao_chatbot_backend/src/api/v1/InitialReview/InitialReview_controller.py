@@ -40,7 +40,7 @@ async def analyze_document(
 
 @router.post("/save_result")
 def save_ai_result(
-    request: SaveResultRequest, # 🟢 ใช้ Schema แทน dict ลอยๆ
+    request: SaveResultRequest,
     service: InitialReviewService = Depends(get_InitialReview_service)
 ):
     try:
@@ -88,3 +88,11 @@ def delete_session(
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete session")
     return {"status": "success", "message": "Session deleted"}
+
+# Summary 
+@router.get("/{session_id}/summary")
+def get_review_summary(
+    session_id: str,
+    service: InitialReviewService = Depends(get_InitialReview_service)
+):
+    return service.get_InitialReview_summary(user_id="test_user_001", InitialReview_id=session_id)
