@@ -4,7 +4,6 @@ import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useInitialReview } from "../InitialReview-context";
 
-// --- Import API Functions from Libs ---
 import { analyzeDocument } from "../../../libs/InitialReview/analyzeDocument";
 import { saveAiResult } from "../../../libs/InitialReview/saveAIResult";
 import { ocrDocument } from "../../../libs/InitialReview/callOCR"; 
@@ -29,7 +28,6 @@ const createField = (val: string | null): FieldData => ({
   isEdited: false
 });
 
-// สำหรับ Criteria 4 (Sufficiency)
 interface criteria4Details {
   entity: FieldData;
   behavior: FieldData;
@@ -38,7 +36,6 @@ interface criteria4Details {
   location: FieldData;
 }
 
-// Interface รองรับ Human-in-the-Loop
 interface AuthorityDetails {
   aiResult: string;      
   aiReason: string;
@@ -96,43 +93,35 @@ function InitialReviewProcessContent() {
   const router = useRouter();
   const { currentFile } = useInitialReview();
 
-  // 🟢 NEW: State จัดการ Session และ User
   const [sessionId, setSessionId] = useState<string | null>(searchParams.get('session_id'));
-  const [userId, setUserId] = useState<string>("test_user_001"); // จำลองชื่อผู้ใช้
+  const [userId, setUserId] = useState<string>("test_user_067"); //จำลอง User ID
 
-  // --- State ---
   const [showChecklist, setShowChecklist] = useState(false);
   const [criterias, setCriterias] = useState<InitialReviewCriteria[]>(initialCriterias);
   const [expandedCriteriaIds, setExpandedCriteriaIds] = useState<number[]>([]);
   const [isSaving, setIsSaving] = useState(false); 
   
-  // Edit States for Step 4 & Authority
   const [editingField, setEditingField] = useState<keyof criteria4Details | null>(null);
   const [tempEditValue, setTempEditValue] = useState("");
   const [editingAuthorityReasonId, setEditingAuthorityReasonId] = useState<number | null>(null);
   const [tempAuthorityReason, setTempAuthorityReason] = useState("");
 
-  // --- State: View & Edit Mode ---
   const [viewMode, setViewMode] = useState<ViewMode>("pdf");
   const [docText, setDocText] = useState<string>(""); 
   const [draftText, setDraftText] = useState(""); 
   const [isEditingText, setIsEditingText] = useState(false);
 
-  // --- State: OCR Status ---
   const [isOCRLoading, setIsOCRLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const processedFileIdRef = React.useRef<string | null>(null);
 
-  // 🟢 โหลดข้อมูลเก่า (ถ้ามี session_id ใน URL)
   useEffect(() => {
       if (sessionId && !docText) {
-          // TODO: ในอนาคตสามารถใส่ Logic ดึงผลการตรวจเก่าจาก backend มาใส่ State ได้
           console.log(`[INFO] กำลังเปิด Session เก่า: ${sessionId}`);
-          setShowChecklist(true); // เปิดแถบขวาเตรียมไว้
+          setShowChecklist(true);
       }
   }, [sessionId]);
 
-  // --- 1. OCR Logic ---
   useEffect(() => {
     const runOCR = async () => {
         if (!currentFile?.fileObj) return;
@@ -158,7 +147,6 @@ function InitialReviewProcessContent() {
     runOCR();
   }, [currentFile]);
 
-  // --- 2. Start Analysis Logic ---
   const handleStartAnalysis = async () => {
     if (!draftText.trim()) { 
         alert("No text to analyze. Please wait for OCR or type manually."); 
@@ -174,26 +162,21 @@ function InitialReviewProcessContent() {
         const blob = new Blob([draftText], { type: "text/plain" });
         const fileToAnalyze = new File([blob], `${currentFile?.name || 'doc'}_edited.txt`, { type: "text/plain" });
 
-        // ส่งไฟล์ไปวิเคราะห์ (API ควรส่ง user_id ไปด้วย ถ้า backend ต้องการ)
         const result = await analyzeDocument(fileToAnalyze,userId);
 
         if (result.status === "success" || result.data) {
-            // 🟢 อัปเดต Session ID ที่เพิ่งได้มาจาก Backend
             if (result.session_id) {
                 setSessionId(result.session_id);
-                // อัปเดต URL เงียบๆ เพื่อให้กด Refresh แล้วไม่หาย
                 router.replace(`/InitialReview/process?session_id=${result.session_id}`);
             }
 
             const { criteria2, criteria4, criteria6, criteria8 } = result.data;
 
             setCriterias(prev => prev.map(c => {
-                // Criteria 2: อำนาจหน้าที่ สตง. (HITL Init)
                 if (c.id === 2 && criteria2) {
                     return { ...c, isProcessing: false, status: criteria2.status, ocrResult: { status: criteria2.status, title: criteria2.title, reason: criteria2.reason, authority: { aiResult: criteria2.result, aiReason: criteria2.reason, finalResult: criteria2.result, finalReason: criteria2.reason, evidence: criteria2.evidence, isVerified: false, isOverridden: false } } };
                 }
 
-                // Criteria 4: Sufficiency
                 if (c.id === 4 && criteria4) {
                     const structuredDetails: criteria4Details = {
                         entity: createField(criteria4.details?.entity?.value || criteria4.details?.entity || null),
@@ -205,12 +188,10 @@ function InitialReviewProcessContent() {
                     return { ...c, isProcessing: false, status: criteria4.status, ocrResult: { ...criteria4, details: structuredDetails } };
                 }
 
-                // Criteria 6: Complainant
                 if (c.id === 6 && criteria6) {
                     return { ...c, isProcessing: false, status: criteria6.status, ocrResult: { status: criteria6.status, title: criteria6.title, reason: criteria6.reason, people: criteria6.people } };
                 }
 
-                // Criteria 8: อำนาจองค์กรอิสระอื่น (HITL Init)
                 if (c.id === 8 && criteria8) {
                     return { ...c, isProcessing: false, status: criteria8.status, ocrResult: { status: criteria8.status, title: criteria8.title, reason: criteria8.reason, authority: { aiResult: criteria8.result, aiReason: criteria8.reason, aiOrganization: criteria8.organization, finalResult: criteria8.result, finalReason: criteria8.reason, finalOrganization: criteria8.organization || INDEPENDENT_ORGS[0], evidence: criteria8.evidence, isVerified: false, isOverridden: false } } };
                 }
@@ -236,7 +217,6 @@ function InitialReviewProcessContent() {
         return;
     }
 
-    // Check for unverified items
     const unverified = criterias.filter(c => 
         (c.id === 2 || c.id === 8) && c.ocrResult?.authority && !c.ocrResult.authority.isVerified
     );
@@ -271,7 +251,6 @@ function InitialReviewProcessContent() {
              resultData = { ...resultData, manual_selection: criteria.selectedOption, status: criteria.status };
           }
 
-          // 🟢 แนบ User ID และ Session ID ไปใน API Request
           await saveAiResult({
               user_id: userId,
               session_id: sessionId,
@@ -280,7 +259,7 @@ function InitialReviewProcessContent() {
               feedback: criteria.feedback
           });
       }
-      //alert(`✅ บันทึกสำเร็จ! (Session: ${sessionId})`);
+      alert(`บันทึกสำเร็จ! (Session: ${sessionId})`);
     } catch (error: any) {
       console.error("Save Error:", error);
       alert("Error saving data: " + error.message);
@@ -294,7 +273,6 @@ function InitialReviewProcessContent() {
     router.push(`/InitialReview/${sessionId}`);
   };
 
-  // --- Helpers & UI ---
   const toggleExpand = (id: number) => {
     setExpandedCriteriaIds(prev => prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]);
   };
@@ -324,7 +302,6 @@ function InitialReviewProcessContent() {
     }
   };
 
-  // --- HITL Handlers for Authority ---
   const handleVerifyAuthority = (id: number) => {
     setCriterias(prev => prev.map(c => {
         if (c.id === id && c.ocrResult?.authority) {
@@ -387,7 +364,6 @@ function InitialReviewProcessContent() {
     setEditingField(null); 
   };
 
-  // --- Render Functions ---
   const renderAuthorityHITL = (criteriaId: number, status: criteriaStatus, authority: AuthorityDetails) => {
     const isSuccess = status === 'success';
     const statusClass = getStatusClasses(status);
@@ -524,7 +500,6 @@ function InitialReviewProcessContent() {
 
   return (
     <div className="flex h-full w-full flex-row overflow-hidden bg-[#f9fafb]">
-      {/* LEFT PANEL: View/Edit Doc */}
       <div className="flex-1 overflow-y-auto p-4 md:p-8 flex justify-center bg-[#f0f2f5]">
         <div className="flex flex-col h-full w-full max-w-[800px] min-h-[1000px] bg-white shadow-sm border border-gray-200 relative">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white z-10 sticky top-0">
@@ -564,7 +539,6 @@ function InitialReviewProcessContent() {
         </div>
       </div>
 
-      {/* RIGHT PANEL: Checklist */}
       <div className="w-[500px] shrink-0 flex flex-col gap-6 border-l border-gray-200 bg-white p-6 overflow-y-auto">
         {!showChecklist ? (
             <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
