@@ -2,23 +2,61 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import ReactMarkdown from "react-markdown"; 
 import { useRouter } from "next/navigation";
 import sendMessage from "@/libs/sendMessage";
+
+interface Reference {
+  name: string;
+  doc_id: string;
+}
 
 interface Message {
   role: string;
   content: string;
   created_at: string;
+  references?: Reference[]; 
 }
 
 interface ChatWindowProps {
-  initialMessages: Message[];
+  initialMessages: any[];  
   sessionId: string;
 }
 
 export default function ChatWindow({ initialMessages, sessionId }: ChatWindowProps) {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  
+  // Helper function to convert DB object format into our frontend Array format
+  const formatMessages = (msgs: any[]): Message[] => {
+    return msgs.map((msg) => {
+      let parsedReferences: Reference[] = [];
+
+      // Check if references exist
+      if (msg.references) {
+        // If it's already an array (from our active chat state), keep it
+        if (Array.isArray(msg.references)) {
+          parsedReferences = msg.references;
+        } 
+        // If it's an object (from the database history), convert it to an array
+        else if (typeof msg.references === "object") {
+          parsedReferences = Object.entries(msg.references).map(([key, value]) => ({
+            name: key,
+            doc_id: value as string,
+          }));
+        }
+      }
+
+      return {
+        role: msg.role,
+        content: msg.content,
+        created_at: msg.created_at,
+        references: parsedReferences.length > 0 ? parsedReferences : undefined,
+      };
+    });
+  };
+
+  // Initialize state with formatted messages
+  const [messages, setMessages] = useState<Message[]>(() => formatMessages(initialMessages));
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -30,8 +68,9 @@ export default function ChatWindow({ initialMessages, sessionId }: ChatWindowPro
     }, 50);
   }, [messages, isLoading]);
 
+  // Update state with formatted messages when initialMessages change (like on refresh)
   useEffect(() => {
-    setMessages(initialMessages);
+    setMessages(formatMessages(initialMessages));
   }, [initialMessages]);
   
   const formatTime = (dateString: string) => {
@@ -61,16 +100,29 @@ export default function ChatWindow({ initialMessages, sessionId }: ChatWindowPro
     try {
       const responseData = await sendMessage(sessionId, userText);
       
+      // Safely extract from 'data' wrapper if it exists, otherwise use directly
+      const answerText = responseData.data ? responseData.data.answer : responseData.answer;
+      const refObject = responseData.data ? responseData.data.ref : responseData.ref;
+      
+      const lawReferences: Reference[] = refObject 
+        ? Object.entries(refObject).map(([key, value]) => ({
+            name: key,
+            doc_id: value as string
+          })) 
+        : [];
+      
       const aiMessage: Message = {
         role: "assistant",
-        content: responseData.answer,
+        content: answerText || "ไม่พบข้อความตอบกลับ",
         created_at: new Date().toISOString(),
+        references: lawReferences,
       };
-      setMessages((prev) => [...prev, aiMessage]);
       
+      setMessages((prev) => [...prev, aiMessage]);
       router.refresh();
 
     } catch (error) {
+      console.error(error);
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: "❌ Error connecting to server.", created_at: new Date().toISOString() },
@@ -115,6 +167,29 @@ export default function ChatWindow({ initialMessages, sessionId }: ChatWindowPro
                        <ReactMarkdown>{msg.content}</ReactMarkdown>
                     )}
                   </div>
+
+                  {!isUser && msg.references && msg.references.length > 0 && (
+                    <div className="mt-3 flex flex-col gap-1.5">
+                      <p className="text-xs font-semibold text-gray-500 mb-1">อ้างอิงจาก:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {msg.references.map((law, i) => (
+                          <Link 
+                            key={i} 
+                            href={`/merger/${law.doc_id}/view`}
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 px-3 py-1.5 rounded-md border border-blue-200 shadow-sm transition-colors cursor-pointer flex items-center gap-1"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                            </svg>
+                            {law.name}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               </div>
             );
