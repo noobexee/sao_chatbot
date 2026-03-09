@@ -33,17 +33,18 @@ export default function MergerHomePage() {
   }, []);
 
   const filteredDocs = docs
-    // ✅ business rule
+    // business rule
     .filter(
       (doc) => doc.is_latest === true || doc.status === "need_attention"
     )
-    // 🔍 search
+    // search
     .filter((doc) =>
       doc.title.toLowerCase().includes(query.toLowerCase())
     );
 
   return (
-    <div className="h-full w-full p-6 space-y-4">
+    <div className="h-full w-full p-6 flex flex-col space-y-4">
+
       <h2 className="text-sm font-semibold text-gray-800">
         เลือกเอกสารที่ต้องการอัปเดต
       </h2>
@@ -65,7 +66,8 @@ export default function MergerHomePage() {
       )}
 
       {!loading && !error && (
-        <div className="space-y-2">
+        <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+
           {filteredDocs.length === 0 && (
             <p className="text-sm text-gray-500">
               ไม่พบเอกสารที่ตรงเงื่อนไข
@@ -91,6 +93,7 @@ export default function MergerHomePage() {
               >
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
+
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium text-gray-800">
                         {doc.title}
