@@ -7,9 +7,9 @@ from datetime import datetime
 from pythainlp import word_tokenize
 import numpy as np
 from rank_bm25 import BM25Okapi
-from src.app.utils.embedding import BGEEmbedder, global_embedder
+from src.app.llm.llm_manager import get_llm
+from src.app.utils.embedding import global_embedder
 from src.db.vector_store.vector_store import load_faiss_index 
-from src.app.llm.typhoon import TyphoonLLM
 from .utils.formatters import simplify_thai_text, thai_to_arabic, normalize_regulation_id
 import asyncio
 from threading import Lock
@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 class Retriever:
     def __init__(self):
         self.embedder = global_embedder
-        self.llm = TyphoonLLM().get_model()
+        self.llm_service = get_llm() 
+        self.llm = self.llm_service.get_model()
         
         self.reg_index = None
         self.reg_metadata = []

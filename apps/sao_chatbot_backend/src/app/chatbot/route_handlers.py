@@ -242,10 +242,8 @@ async def handle_legal_rag(query: str, history: list, llm:Any, retriever:Retriev
     route = await get_legal_route(query, history, llm)
     if route == "ORDER":
         retrieved_docs = await retriever.retrieve_order(user_query=query, k=3, history=history)
-        
     elif route == "GUIDELINE":
         retrieved_docs = await retriever.retrieve_guideline(user_query=query, k=3, history=history)
-        
     elif route == "STANDARD":
         retrieved_docs = await retriever.retrieve_standard(user_query=query, k=3, history=history)
     elif route == "REGULATION" :
