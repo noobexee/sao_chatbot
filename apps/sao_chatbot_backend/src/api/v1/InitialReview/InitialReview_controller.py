@@ -1,8 +1,9 @@
 import uuid
 from typing import Optional
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form, Query
 from src.app.InitialReview.InitialReview_service import InitialReviewService
 from src.app.InitialReview.InitialReviewSchemas import SaveResultRequest
+from src.app.InitialReview.InitialReview_matcher import agency_matcher
 
 router = APIRouter(tags=["InitialReview Process"])
 
@@ -39,6 +40,14 @@ async def analyze_document(
         return result
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+@router.get("/search_agency")
+def manual_search_agency(q: str = Query(..., description="คำค้นหาชื่อหน่วยงาน")):
+    if not agency_matcher:
+        raise HTTPException(status_code=500, detail="Agency Matcher is not available")
+    
+    result = agency_matcher.search_agency(q)
+    return result
 
 @router.post("/save_result")
 def save_ai_result(
