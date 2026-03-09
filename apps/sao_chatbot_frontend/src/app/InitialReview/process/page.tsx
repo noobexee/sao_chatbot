@@ -784,13 +784,14 @@ function InitialReviewProcessContent() {
                                                                     onChange={() => handleC1HierarchySelect(criteria.id, h)}
                                                                 />
                                                                 <div className="text-sm flex-1">
-                                                                    <div className="font-bold text-gray-800">
-                                                                        {h.department}
-                                                                        <span className="text-xs font-normal text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded ml-2">
-                                                                            รหัส: {h.agency_id}
-                                                                        </span>
+                                                                    <span className="text-xs font-normal text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded ml-2">รหัส: {h.agency_id}</span>
+                                                                    <div className="font-bold text-gray-800">{h.department} 
+                                                                        <span className="text-xs font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded ml-1">รหัส: {h.department_id}</span>
                                                                     </div>
-                                                                    <div className="text-xs text-gray-500 mt-1">{h.ministry}</div>
+                                                                    <div className="text-xs text-gray-500 mt-1">{h.ministry} 
+                                                                        
+                                                                        <span className="text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded ml-1">รหัส: {h.ministry_id}</span>
+                                                                    </div>
                                                                 </div>
                                                             </label>
                                                         ))}
