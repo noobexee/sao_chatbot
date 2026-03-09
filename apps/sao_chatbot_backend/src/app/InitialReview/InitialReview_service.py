@@ -12,6 +12,11 @@ from src.app.InitialReview.InitialReviewSchemas import ReviewSummary
 from src.db.repositories.InitialReview_repository import InitialReviewRepository
 from src.app.llm import InitialReview_agents
 
+try:
+    from src.app.InitialReview.InitialReview_matcher import agency_matcher
+except ImportError:
+    agency_matcher = None
+
 from src.app.llm.ocr import TyphoonOCRLoader
 
 class InitialReviewService:
@@ -63,9 +68,64 @@ class InitialReviewService:
 
             res_c2, res_c4, res_c6, res_c8 = await asyncio.gather(task_c2, task_c4, task_c6, task_c8)
 
+            res_c1 = {
+                "status": "fail", 
+                "title": "หน่วยรับตรวจ", 
+                "data": None, 
+                "reason": "ไม่พบข้อมูลหน่วยรับตรวจ",
+                "match_type": "None"
+            }
+            extracted_entity = None
+            if res_c4 and "details" in res_c4 and "entity" in res_c4["details"]:
+                entity_field = res_c4["details"]["entity"]
+                if isinstance(entity_field, dict):
+                    extracted_entity = entity_field.get("value")
+                else:
+                    extracted_entity = entity_field
+
+            # [STEP 2 & 3: เข้าเครื่องซักล้างและน้ำตก 3 ด่าน]
+            if extracted_entity and agency_matcher and agency_matcher.is_ready:
+                matcher_result = agency_matcher.search_agency(extracted_entity)
+                
+                # [STEP 4: The LLM Judge (ด่านสุดท้าย)]
+                if matcher_result.get("status") == "pending_llm":
+                    candidates = matcher_result.get("candidates", [])
+                    print(f"🔍 C1 LLM Judge Triggered! Entity: '{extracted_entity}', Candidates: {candidates}")
+                    
+                    # เรียก AI ศาลเตี้ย
+                    judge_res = await asyncio.to_thread(
+                        InitialReview_agents.InitialReview_agents.agent_criteria1_judge,
+                        extracted_entity,
+                        candidates,
+                        extracted_text
+                    )
+                    
+                    if judge_res and judge_res.get("selected_candidate") != "Not Found":
+                        selected_name = judge_res.get("selected_candidate")
+                        
+                        db_result = agency_matcher.get_agency_by_name(selected_name)
+                        
+                        if db_result["status"] == "success":
+                            res_c1 = db_result
+                            res_c1["reason"] = judge_res.get("reason", "ตัดสินโดย LLM")
+                        else:
+                             res_c1["status"] = "fail"
+                             res_c1["match_type"] = "Not Found"
+                             res_c1["reason"] = "AI เลือกว่าตรง แต่ไม่พบข้อมูลในฐานข้อมูล"
+                    else:
+                        # LLM บอกว่าไม่ใช่สักข้อ
+                        res_c1["status"] = "fail"
+                        res_c1["match_type"] = "Not Found"
+                        res_c1["reason"] = judge_res.get("reason", "AI วิเคราะห์แล้วไม่ตรงกับฐานข้อมูล")
+                else:
+                    # จบตั้งแต่ด่าน Exact, Partial หรือ Fuzzy (>80%)
+                    res_c1 = matcher_result
+
+            # --- เฟส 3: รวมผลส่งกลับ Frontend ---
             return {
                 "status": "success",
                 "data": {
+                    "criteria1": res_c1,
                     "criteria2": self._format_authority_response(res_c2, 2),
                     "criteria4": self._format_ai_response(res_c4, "criteria4"),
                     "criteria6": self._format_ai_response(res_c6, "criteria6"),
@@ -78,23 +138,18 @@ class InitialReviewService:
             raise e
 
     def save_criteria_log(self, user_id: str, session_id: str, criteria_id: int, ai_result: dict, feedback: str = None) -> bool:
-        """ส่งข้อมูลไปบันทึกลง Database ผ่าน Repository"""
         return self.repo.save_criteria_log(user_id, session_id, criteria_id, ai_result, feedback)
 
     def get_all_sessions(self, user_id: str):
-        """ดึงประวัติ Session ทั้งหมดของ User"""
         return self.repo.get_all_sessions(user_id)
 
     def get_review_by_session(self, user_id: str, session_id: str):
-        """ดึงรายละเอียดการตรวจของ 1 Session"""
         return self.repo.get_review_by_session(user_id, session_id)
 
     def delete_session(self, user_id: str, session_id: str) -> bool:
-        """ลบประวัติการตรวจสอบ"""
         return self.repo.delete_session(user_id, session_id)
 
     def _format_ai_response(self, result: dict, criteria_type: str) -> dict:
-        """จัด Format สำหรับ Criteria ทั่วไป (ข้อ 4 และ 6)"""
         if not result:
             return {"status": "fail", "title": "AI Error", "details": {}, "people": []}
         
@@ -110,7 +165,6 @@ class InitialReviewService:
         return result
 
     def _format_authority_response(self, result: dict, criteria_id: int) -> dict:
-        """จัด Format สำหรับ Criteria 2 และ 8 (รองรับระบบ HITL)"""
         if not result:
              return {"status": "fail", "title": "AI Error", "result": "-", "reason": "AI Error"}
 

@@ -67,7 +67,6 @@ def get_user_sessions(
     user_id: str, 
     service: InitialReviewService = Depends(get_InitialReview_service)
 ):
-    """ดึงประวัติเอกสารทั้งหมดที่เคยตรวจของ User นี้"""
     return service.get_all_sessions(user_id)
 
 @router.get("/sessions/{user_id}/{session_id}")
@@ -76,7 +75,6 @@ def get_session_details(
     session_id: str, 
     service: InitialReviewService = Depends(get_InitialReview_service)
 ):
-    """ดึงรายละเอียดผลการตรวจสอบทั้งหมดใน Session (เอกสาร) นั้นๆ"""
     return service.get_review_by_session(user_id, session_id)
     
 @router.delete("/sessions/{user_id}/{session_id}")
@@ -85,7 +83,6 @@ def delete_session(
     session_id: str, 
     service: InitialReviewService = Depends(get_InitialReview_service)
 ):
-    """ลบประวัติการตรวจเอกสาร (Session)"""
     success = service.delete_session(user_id, session_id)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete session")

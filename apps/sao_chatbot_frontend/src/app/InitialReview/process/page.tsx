@@ -1,15 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, Suspense, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useInitialReview } from "../InitialReview-context";
 
-// --- Import API Functions from Libs ---
 import { analyzeDocument } from "../../../libs/InitialReview/analyzeDocument";
 import { saveAiResult } from "../../../libs/InitialReview/saveAIResult";
 import { ocrDocument } from "../../../libs/InitialReview/callOCR"; 
 
-// --- Types ---
 type criteriaStatus = "neutral" | "pending" | "success" | "fail";
 type FeedbackType = "up" | "down" | null;
 type ViewMode = "pdf" | "text";
@@ -114,13 +112,13 @@ function InitialReviewProcessContent() {
 
   const [isOCRLoading, setIsOCRLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
-  const processedFileIdRef = React.useRef<string | null>(null);
+  const processedFileIdRef = useRef<string | null>(null);
 
   useEffect(() => {
       if (sessionId && !docText) {
           setShowChecklist(true);
       }
-  }, [sessionId]);
+  }, [sessionId, docText]);
 
   // --- 1. OCR Logic ---
   useEffect(() => {
@@ -147,7 +145,7 @@ function InitialReviewProcessContent() {
         }
     };
     runOCR();
-  }, [currentFile]);
+  }, [currentFile, docText]);
 
   // --- 2. Start Analysis Logic ---
   const handleStartAnalysis = async () => {
@@ -176,6 +174,25 @@ function InitialReviewProcessContent() {
             const { criteria1, criteria2, criteria4, criteria6, criteria8 } = result.data;
 
             setCriterias(prev => prev.map(c => {
+                if (c.id === 1 && criteria1) {
+                    let status: criteriaStatus = "pending";
+                    let reason = criteria1.reason || "-";
+
+                    if (criteria1.status === "success" && criteria1.data?.match_count === 1) {
+                        status = "success";
+                        const h = criteria1.data.hierarchies[0];
+                        reason = `พบหน่วยงาน: ${h.department} (${h.ministry})`;
+                        criteria1.data.selected_hierarchy = h;
+                    } else if (criteria1.status === "success" && criteria1.data?.match_count > 1) {
+                        status = "pending";
+                        reason = `พบหลายสังกัด กรุณาเลือก`;
+                    } else if (criteria1.status === "fail") {
+                        status = "fail";
+                    }
+
+                    return { ...c, isProcessing: false, status: status, ocrResult: { status: criteria1.status, title: "หน่วยรับตรวจ", reason: reason, details: criteria1 } };
+                }
+
                 if (c.id === 2 && criteria2) {
                     return { ...c, isProcessing: false, status: criteria2.status, ocrResult: { status: criteria2.status, title: criteria2.title, reason: criteria2.reason, authority: { aiResult: criteria2.result, aiReason: criteria2.reason, finalResult: criteria2.result, finalReason: criteria2.reason, evidence: criteria2.evidence, isVerified: false, isOverridden: false } } };
                 }
@@ -213,26 +230,50 @@ function InitialReviewProcessContent() {
     }
   };
 
+  const handleC1HierarchySelect = (criteriaId: number, hierarchy: any) => {
+    setCriterias(prev => prev.map(c => {
+        if (c.id === criteriaId && c.ocrResult?.details?.data) {
+            return {
+                ...c,
+                status: 'success',
+                ocrResult: {
+                    ...c.ocrResult,
+                    status: 'success',
+                    reason: `พบหน่วยงาน: ${hierarchy.department} (${hierarchy.ministry})`,
+                    details: {
+                        ...c.ocrResult.details,
+                        data: {
+                            ...c.ocrResult.details.data,
+                            selected_hierarchy: hierarchy
+                        }
+                    }
+                }
+            };
+        }
+        return c;
+    }));
+  };
+
   // --- 3. Save Logic ---
   const handleSaveToDatabase = async () => {
     if (!sessionId) {
       alert("Error: ไม่มี Session ID กรุณากดปุ่ม Start Analysis ก่อนครับ");
       return;
     }
-    const unverifiedAuto = criterias.filter(c => 
-        (c.id === 2 || c.id === 8) && c.ocrResult?.authority && !c.ocrResult.authority.isVerified
-    );
-    const unverifiedManual = criterias.filter(c => 
-        (c.id === 3 || c.id === 5 || c.id === 7) && !c.selectedOption
-    );
-    if (unverifiedAuto.length > 0 || unverifiedManual.length > 0) {
+
+    const unverifiedC1 = criterias.filter(c => c.id === 1 && c.status === 'pending');
+    const unverifiedAuto = criterias.filter(c => (c.id === 2 || c.id === 8) && c.ocrResult?.authority && !c.ocrResult.authority.isVerified);
+    const unverifiedManual = criterias.filter(c => (c.id === 3 || c.id === 5 || c.id === 7) && !c.selectedOption);
+
+    if (unverifiedC1.length > 0 || unverifiedAuto.length > 0 || unverifiedManual.length > 0) {
         const missingIds = [
+            ...unverifiedC1.map(c => c.id),
             ...unverifiedAuto.map(c => c.id),
             ...unverifiedManual.map(c => c.id)
         ].sort((a, b) => a - b);
         
         setExpandedCriteriaIds(prev => [...new Set([...prev, ...missingIds])]);
-        alert(`⚠️ ไม่สามารถบันทึกได้!\n\nกรุณายืนยันผล (ข้อ 2, 8) และเลือกผลการประเมิน (ข้อ 3, 5, 7) ให้ครบถ้วน\n\nข้อที่ยังขาดอยู่คือ: ข้อ ${missingIds.join(", ")}`);
+        alert(`⚠️ ไม่สามารถบันทึกได้!\n\nกรุณาตรวจสอบและยืนยันผลให้ครบถ้วน\n\nข้อที่ยังขาดอยู่คือ: ข้อ ${missingIds.join(", ")}`);
         return; 
     }
 
@@ -292,7 +333,6 @@ function InitialReviewProcessContent() {
     router.push(`/InitialReview/${sessionId}`);
   };
 
-  // --- Helpers & UI ---
   const toggleExpand = (id: number) => {
     setExpandedCriteriaIds(prev => prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]);
   };
@@ -322,7 +362,6 @@ function InitialReviewProcessContent() {
     }
   };
 
-  // --- HITL Handlers for Authority ---
   const handleVerifyAuthority = (id: number) => {
     setCriterias(prev => prev.map(c => {
         if (c.id === id && c.ocrResult?.authority) {
@@ -385,7 +424,6 @@ function InitialReviewProcessContent() {
     setEditingField(null); 
   };
 
-  // --- Render Functions ---
   const renderAuthorityHITL = (criteriaId: number, status: criteriaStatus, authority: AuthorityDetails) => {
     const isSuccess = status === 'success';
     const statusClass = getStatusClasses(status);
@@ -604,6 +642,57 @@ function InitialReviewProcessContent() {
 
                         {expandedCriteriaIds.includes(criteria.id) && (
                            <div className="mt-2 ml-4 p-4 border-l-2 border-gray-200 bg-gray-50 rounded-r-md">
+                              
+                              {criteria.id === 1 && criteria.ocrResult?.details && (
+                                <div className="space-y-3">
+                                    <div className="text-sm font-bold text-gray-800">
+                                        ชื่อที่ตรวจพบ: {criteria.ocrResult.details.data?.agency_name || "ไม่ระบุ"}
+                                    </div>
+                                    
+                                    {criteria.ocrResult.details.data?.selected_hierarchy ? (
+                                        <div className="bg-green-50 border border-green-200 p-4 rounded-md mt-2 shadow-sm">
+                                            <div className="text-xs text-green-800 font-semibold mb-3 border-b border-green-200 pb-2">✓ ข้อมูลหน่วยรับตรวจที่ยืนยันแล้ว</div>
+                                            <div className="grid grid-cols-1 gap-2 text-xs text-gray-700">
+                                                <div className="flex justify-between"><span className="font-semibold w-1/3">รหัสหน่วยงาน:</span> <span className="w-2/3">{criteria.ocrResult.details.data.selected_hierarchy.agency_id}</span></div>
+                                                <div className="flex justify-between"><span className="font-semibold w-1/3">ชื่อหน่วยงาน:</span> <span className="w-2/3">{criteria.ocrResult.details.data.agency_name}</span></div>
+                                                <div className="flex justify-between"><span className="font-semibold w-1/3">รหัสสังกัด:</span> <span className="w-2/3">{criteria.ocrResult.details.data.selected_hierarchy.department_id}</span></div>
+                                                <div className="flex justify-between"><span className="font-semibold w-1/3">ชื่อสังกัด:</span> <span className="w-2/3">{criteria.ocrResult.details.data.selected_hierarchy.department}</span></div>
+                                                <div className="flex justify-between"><span className="font-semibold w-1/3">รหัสกระทรวง:</span> <span className="w-2/3">{criteria.ocrResult.details.data.selected_hierarchy.ministry_id}</span></div>
+                                                <div className="flex justify-between"><span className="font-semibold w-1/3">ชื่อกระทรวง:</span> <span className="w-2/3">{criteria.ocrResult.details.data.selected_hierarchy.ministry}</span></div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <p className="text-sm text-gray-600">{criteria.ocrResult.reason}</p>
+                                            
+                                            {criteria.status === "pending" && criteria.ocrResult.details.data?.hierarchies && (
+                                                <div className="mt-3">
+                                                    <label className="block text-xs font-bold text-gray-500 mb-2">
+                                                        กรุณาเลือกสังกัดที่ถูกต้อง <span className="text-red-500">*จำเป็น</span>:
+                                                    </label>
+                                                    <div className="space-y-2">
+                                                        {criteria.ocrResult.details.data.hierarchies.map((h: any, idx: number) => (
+                                                            <label key={idx} className="flex items-start gap-3 p-3 border rounded-lg bg-white cursor-pointer hover:bg-blue-50 hover:border-blue-200 transition-colors">
+                                                                <input 
+                                                                    type="radio" 
+                                                                    name="c1_hierarchy" 
+                                                                    className="mt-1 h-4 w-4 text-blue-600"
+                                                                    onChange={() => handleC1HierarchySelect(criteria.id, h)}
+                                                                />
+                                                                <div className="text-sm flex-1">
+                                                                    <div className="font-bold text-gray-800">{h.department} <span className="text-xs font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded ml-1">รหัส: {h.department_id}</span></div>
+                                                                    <div className="text-xs text-gray-500 mt-1">{h.ministry} <span className="text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded ml-1">รหัส: {h.ministry_id}</span></div>
+                                                                </div>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                              )}
+
                               {(criteria.id === 2 || criteria.id === 8) && criteria.ocrResult?.authority && (
                                   renderAuthorityHITL(criteria.id, criteria.status, criteria.ocrResult.authority)
                               )}
@@ -668,7 +757,7 @@ function InitialReviewProcessContent() {
                         {expandedCriteriaIds.length === criterias.length ? "ย่อ Criteria ทั้งหมด" : "ขยาย Criteria ทั้งหมด"}
                     </button>
                     <button onClick={handleSaveToDatabase} disabled={isSaving || !sessionId} className="w-full px-6 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all text-sm font-medium shadow-sm disabled:opacity-50">
-                        {isSaving ? "Saving..." : "สรุปผลและบันทึกข้อมูล"}
+                        {isSaving ? "Saving..." : "Save Results"}
                     </button>
                 </div>
             </div>
