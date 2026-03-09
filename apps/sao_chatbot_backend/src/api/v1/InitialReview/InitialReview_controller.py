@@ -1,5 +1,6 @@
 import uuid
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Body
+from typing import Optional
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form
 from src.app.InitialReview.InitialReview_service import InitialReviewService
 from src.app.InitialReview.InitialReviewSchemas import SaveResultRequest
 
@@ -22,15 +23,18 @@ async def ocr_document(
 @router.post("/analyze")
 async def analyze_document(
     file: UploadFile = File(...),
+    user_id: str = Form(default="anonymous"),
+    session_id: Optional[str] = Form(default=None),
     service: InitialReviewService = Depends(get_InitialReview_service)
 ):
     try:
-        session_id = str(uuid.uuid4())
+        current_session_id = session_id if session_id else str(uuid.uuid4())
         
         result = await service.analyze_document_logic(file)
         
         if "data" in result:
-            result["session_id"] = session_id
+            result["session_id"] = current_session_id
+            result["user_id"] = user_id
             
         return result
     except Exception as e:
@@ -38,25 +42,16 @@ async def analyze_document(
 
 @router.post("/save_result")
 def save_ai_result(
-    data: dict = Body(...),
+    request: SaveResultRequest,
     service: InitialReviewService = Depends(get_InitialReview_service)
 ):
     try:
-        session_id = data.get("session_id") or data.get("InitialReview_id")
-        user_id = data.get("user_id", "anonymous")
-        criteria_id = data.get("criteria_id")
-        result_data = data.get("result", {})
-        feedback = data.get("feedback")
-
-        if not session_id or not criteria_id:
-            raise HTTPException(status_code=400, detail="Missing session_id or criteria_id")
-
         success = service.save_criteria_log(
-            user_id=user_id,
-            session_id=session_id,
-            criteria_id=int(criteria_id),
-            ai_result=result_data,
-            feedback=feedback
+            user_id=request.user_id,
+            session_id=request.session_id,
+            criteria_id=request.criteria_id,
+            ai_result=request.result,
+            feedback=request.feedback
         )
         
         if not success:

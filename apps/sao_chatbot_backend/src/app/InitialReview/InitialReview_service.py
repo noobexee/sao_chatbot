@@ -6,6 +6,7 @@ import shutil
 import asyncio
 import tempfile
 from fastapi import UploadFile
+import json
 
 from src.app.InitialReview.InitialReviewSchemas import ReviewSummary
 from src.db.repositories.InitialReview_repository import InitialReviewRepository
@@ -14,6 +15,7 @@ from src.app.llm import InitialReview_agents
 from src.app.llm.ocr import TyphoonOCRLoader
 
 class InitialReviewService:
+
     def __init__(self):
         self.repo = InitialReviewRepository()
     
@@ -149,12 +151,16 @@ class InitialReviewService:
         criteria_map = defaultdict(dict)
 
         for r in rows:
+            print(r)
             criteria_id = r[0]
             field_type = r[1]
             criteria_map[criteria_id][field_type] = r
 
         def pick(row):
-            return row[4] if row[5] else row[2]
+            return row[2] if row[5] else row[4]
+        
+        def has_text(value):
+            return value is not None and str(value).strip() != ""
 
         summary = ReviewSummary()
 
@@ -191,10 +197,10 @@ class InitialReviewService:
             location = pick(c4["location"]) if "location" in c4 else None
 
             summary.criteria_4 = [
-                entity is not None,
-                behavior is not None,
-                official is not None,
-                (date is not None and location is not None)
+                has_text(entity),
+                has_text(behavior),
+                has_text(official),
+                has_text(date) and has_text(location)
             ]
 
         # -------- Criteria 5 --------
@@ -210,14 +216,23 @@ class InitialReviewService:
             row = criteria_map[6].get("people_list")
 
             if row:
-                # we only check existence for now
-                people = pick(row)
+                people_raw = pick(row)
+                try:
+                    people = json.loads(people_raw) if has_text(people_raw) else []
+                except Exception as e:
+                    print("JSON error:", e)
+                    people = []
+
+                has_complainant = any(p.get("role") == "ผู้ร้องเรียน" for p in people)
+                has_accused = any(p.get("role") == "ผู้ถูกร้องเรียน" for p in people)
+                has_witness = any(p.get("role") == "พยาน" for p in people)
 
                 summary.criteria_6 = [
-                    None,           # complainant can be null
-                    bool(people),   # accused exists
-                    bool(people)    # witness exists
+                    bool(has_complainant),
+                    bool(has_accused),
+                    bool(has_witness)
                 ]
+
 
         # -------- Criteria 7 --------
         if 7 in criteria_map:
@@ -227,9 +242,9 @@ class InitialReviewService:
                 value = row[4]  # always user_value
 
                 if value == "เป็น":
-                    summary.criteria_7 = {True: "พบหน่วยงานที่เกี่ยวข้อง"}
-                else:
                     summary.criteria_7 = {False: None}
+                else:
+                    summary.criteria_7 = {True: "พบหน่วยงานที่เกี่ยวข้อง"}
 
         # -------- Criteria 8 --------
         if 8 in criteria_map:
@@ -241,7 +256,6 @@ class InitialReviewService:
                 reason = pick(reason_row) if reason_row else ""
 
                 summary.criteria_8 = {result: reason}
-        print(summary)
         return summary
 
         
