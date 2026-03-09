@@ -28,7 +28,8 @@ class InitialReviewService:
             r"หลวงพ่อ เป็น": "หลวงพ่อเปิ่น",
             r"โรงเรียนบ้านหนอง ใหญ่": "โรงเรียนบ้านหนองใหญ่",
             r"เทศบาลตำบล หนอง": "เทศบาลตำบลหนอง",
-            r"องค์การบริหารส่วน ตำบล": "องค์การบริหารส่วนตำบล"
+            r"องค์การบริหารส่วน ตำบล": "องค์การบริหารส่วนตำบล",
+            r"สถาบันวิจัยและพัฒนา วิทยาศาสตร์และเทคโนโลยี มช.": "สถาบันวิจัยและพัฒนาวิทยาศาสตร์และเทคโนโลยีมช"
         }
     
     def _fix_ocr_typos(self, text: str) -> str:
@@ -185,3 +186,136 @@ class InitialReviewService:
             "evidence": result.get("evidence", "-"),
             "organization": result.get("organization", None)
         }
+    
+    def get_InitialReview_file_content(self, InitialReview_id: str):
+        info = self.repo.get_InitialReview_summary(InitialReview_id)
+        if not info:
+             raise ValueError("InitialReview ID not found")
+        
+        file_content = self.repo.get_InitialReview_file_content(InitialReview_id)
+        if not file_content:
+            raise FileNotFoundError("File content missing")
+
+        file_name = info.get("file_name", "doc.pdf")
+        media_type = "application/pdf" if file_name.lower().endswith(".pdf") else "image/jpeg"
+        
+        return io.BytesIO(file_content), media_type
+    
+    def get_InitialReview_summary(self, user_id: str, InitialReview_id: str):
+        rows = self.repo.get_review_by_session(
+            user_id=user_id,
+            session_id=InitialReview_id
+        )
+
+        if not rows:
+            return None
+
+        criteria_map = defaultdict(dict)
+
+        for r in rows:
+            print(r)
+            criteria_id = r[0]
+            field_type = r[1]
+            criteria_map[criteria_id][field_type] = r
+
+        def pick(row):
+            return row[2] if row[5] else row[4]
+        
+        def has_text(value):
+            return value is not None and str(value).strip() != ""
+
+        summary = ReviewSummary()
+
+        # -------- Criteria 2 --------
+        if 2 in criteria_map:
+            result_row = criteria_map[2].get("criteria2_result")
+
+            if result_row:
+                value = pick(result_row)
+                summary.criteria_2 = (value == "เป็น")
+
+        # -------- Criteria 3 --------
+        if 3 in criteria_map:
+            row = criteria_map[3].get("raw_result")
+
+            if row:
+                value = row[4]  # always user_value
+
+                if value == "ไม่เกิน":
+                    summary.criteria_3 = True
+                elif value == "เกิน":
+                    summary.criteria_3 = False
+                else:
+                    summary.criteria_3 = None
+
+        # -------- Criteria 4 --------
+        if 4 in criteria_map:
+            c4 = criteria_map[4]
+
+            entity = pick(c4["entity"]) if "entity" in c4 else None
+            behavior = pick(c4["behavior"]) if "behavior" in c4 else None
+            official = pick(c4["official"]) if "official" in c4 else None
+            date = pick(c4["date"]) if "date" in c4 else None
+            location = pick(c4["location"]) if "location" in c4 else None
+
+            summary.criteria_4 = [
+                has_text(entity),
+                has_text(behavior),
+                has_text(official),
+                has_text(date) and has_text(location)
+            ]
+
+        # -------- Criteria 5 --------
+        if 5 in criteria_map:
+            row = criteria_map[5].get("raw_result")
+
+            if row:
+                value = row[4]  # always user_value
+                summary.criteria_5 = (value == "ไม่เคยแจ้ง")
+
+        # -------- Criteria 6 --------
+        if 6 in criteria_map:
+            row = criteria_map[6].get("people_list")
+
+            if row:
+                people_raw = pick(row)
+                try:
+                    people = json.loads(people_raw) if has_text(people_raw) else []
+                except Exception as e:
+                    print("JSON error:", e)
+                    people = []
+
+                has_complainant = any(p.get("role") == "ผู้ร้องเรียน" for p in people)
+                has_accused = any(p.get("role") == "ผู้ถูกร้องเรียน" for p in people)
+                has_witness = any(p.get("role") == "พยาน" for p in people)
+
+                summary.criteria_6 = [
+                    bool(has_complainant),
+                    bool(has_accused),
+                    bool(has_witness)
+                ]
+
+
+        # -------- Criteria 7 --------
+        if 7 in criteria_map:
+            row = criteria_map[7].get("raw_result")
+
+            if row:
+                value = row[4]  # always user_value
+
+                if value == "เป็น":
+                    summary.criteria_7 = {False: None}
+                else:
+                    summary.criteria_7 = {True: "พบหน่วยงานที่เกี่ยวข้อง"}
+
+        # -------- Criteria 8 --------
+        if 8 in criteria_map:
+            result_row = criteria_map[8].get("criteria8_result")
+            reason_row = criteria_map[8].get("criteria8_reason")
+
+            if result_row:
+                result = pick(result_row) == "เป็น"
+                reason = pick(reason_row) if reason_row else ""
+
+                summary.criteria_8 = {result: reason}
+        return summary
