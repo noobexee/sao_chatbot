@@ -52,7 +52,7 @@ class AgencyMatcher:
             conn = get_db_connection()
             cur = conn.cursor()
 
-            # 🌊 ด่าน 1: Exact Match
+            # 🌊 ด่าน 1: Exact Match (เปรียบเทียบ search_key)
             cur.execute("""
                 SELECT agency_name, agency_code, department_name, ministry_name, department_code, ministry_code
                 FROM initial_review_agencies 
@@ -63,10 +63,10 @@ class AgencyMatcher:
             if matches:
                 return self._format_result(matches, "Exact Match")
 
-            # 🌊 ด่าน 2: Fuzzy Match
+            # 🌊 ด่าน 2: Fuzzy Match (ดึง search_key ออกมาใน index ที่ 7)
             cur.execute("""
                 SELECT agency_name, agency_code, department_name, ministry_name, department_code, ministry_code,
-                       similarity(search_key, %s) as score
+                       similarity(search_key, %s) as score, search_key
                 FROM initial_review_agencies 
                 WHERE similarity(search_key, %s) > 0.6
                 ORDER BY score DESC 
@@ -76,19 +76,19 @@ class AgencyMatcher:
             fuzzy_results = cur.fetchall()
             
             if fuzzy_results:
-                best_score = fuzzy_results[0][6] 
+                best_score = fuzzy_results[0][6] # คะแนน Score
                 
                 if best_score >= 0.8:
-                    best_name = fuzzy_results[0][0]
+                    best_search_key = fuzzy_results[0][7] # ดึง search_key
                     cur.execute("""
                         SELECT agency_name, agency_code, department_name, ministry_name, department_code, ministry_code
                         FROM initial_review_agencies 
-                        WHERE agency_name = %s
-                    """, (best_name,))
+                        WHERE search_key = %s
+                    """, (best_search_key,))
                     return self._format_result(cur.fetchall(), f"Fuzzy Match ({best_score*100:.1f}%)")
                 
-                # คลุมเครือ ส่งต่อให้ LLM Judge (Step 4)
-                candidates = list(dict.fromkeys([row[0] for row in fuzzy_results]))[:3]
+                # 🟢 คลุมเครือ ส่งต่อให้ LLM Judge โดยส่ง "search_key" (row[7]) เป็น Candidate
+                candidates = list(dict.fromkeys([row[7] for row in fuzzy_results]))[:3]
                 return {
                     "status": "pending_llm",
                     "extracted_name": extracted_entity,
@@ -105,8 +105,9 @@ class AgencyMatcher:
                 cur.close()
                 conn.close()
 
-    def get_agency_by_name(self, agency_name: str) -> Dict[str, Any]:
-        """ดึงข้อมูลทั้งหมดของหน่วยงานจากชื่อที่กำหนด (ใช้ในด่าน LLM Judge)"""
+    # 🟢 NEW: ฟังก์ชันสำหรับค้นหาด้วย search_key จากตัวเลือกที่ LLM คืนมา
+    def get_agency_by_search_key(self, search_key: str) -> Dict[str, Any]:
+        """ดึงข้อมูลทั้งหมดของหน่วยงานจาก search_key ที่ LLM เลือก (ใช้ในด่าน LLM Judge)"""
         conn = None
         try:
             conn = get_db_connection()
@@ -114,16 +115,16 @@ class AgencyMatcher:
             cur.execute("""
                 SELECT agency_name, agency_code, department_name, ministry_name, department_code, ministry_code
                 FROM initial_review_agencies 
-                WHERE agency_name = %s
-            """, (agency_name,))
+                WHERE search_key = %s
+            """, (search_key,))
             
             matches = cur.fetchall()
             if matches:
                 return self._format_result(matches, "LLM Judge")
-            return self._build_not_found_response("ไม่พบข้อมูลชื่อที่ LLM เลือกในฐานข้อมูล")
+            return self._build_not_found_response("ไม่พบข้อมูลที่ LLM เลือกในฐานข้อมูล")
             
         except Exception as e:
-            print(f"❌ DB Fetch Error in get_agency_by_name: {e}")
+            print(f"❌ DB Fetch Error in get_agency_by_search_key: {e}")
             return self._build_not_found_response("ระบบฐานข้อมูลขัดข้อง")
         finally:
             if conn:
