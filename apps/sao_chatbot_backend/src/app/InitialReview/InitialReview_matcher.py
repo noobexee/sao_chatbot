@@ -6,10 +6,6 @@ class AgencyMatcher:
     def __init__(self):
         self.is_ready = True 
         
-        self.TYPO_FIXES = {
-            "iรงเรียน": "โรงเรียน", "โรวพยาบาล": "โรงพยาบาล", 
-            "ไปรณีย์": "ไปรษณีย์", "สวัดตาลเอน": "สวัสดิ์ตาลเอน"
-        }
         self.THAI_ABBREVIATIONS = {
             "ร.ร.": "โรงเรียน", "รพ.": "โรงพยาบาล", "รพ.สต.": "โรงพยาบาลส่งเสริมสุขภาพตำบล",
             "อบต.": "องค์การบริหารส่วนตำบล", "ทต.": "เทศบาลตำบล", "อบจ.": "องค์การบริหารส่วนจังหวัด",
@@ -17,16 +13,9 @@ class AgencyMatcher:
         }
 
     def _normalize_text(self, text: str) -> str:
-        if not text: return "" #✅ handle None or empty string case early
-        text = str(text).strip() #✅remove space 
+        if not text: return ""
+        text = str(text).strip() 
         text = text.replace(" ", "").replace("\u200b", "") 
-
-        for bad, good in self.TYPO_FIXES.items(): # ❌ why have this? should already handle with fuzzy matching
-            text = text.replace(bad, good)          # to little fix try do prefix/suffix match/fix
-
-        text = re.sub(r'โรงเรีย(?![น])', 'โรงเรียน', text)    # ❌ too hard code not cover all 'โรงเรียน' case(36097/70000 case)
-                                                            # repetition with TYPO_FIXES
-                                                            # try handle with fuzzy matching or prefix/suffix match/fix instead of hard code like this
 
         for short, full in self.THAI_ABBREVIATIONS.items(): #✅ cover most of the case in db 
             text = text.replace(short, full) 
@@ -35,20 +24,9 @@ class AgencyMatcher:
         
         return text.lower()
 
-    def _is_mock_data(self, text: str) -> bool:
-        """ ตรวจจับชื่อสมมติ เช่น เทศบาล ก., โรงเรียนแห่งหนึ่ง """
-        mock_patterns = [r'แห่งหนึ่ง$', r'\s?[ก-ฮ]\.$', r'นามสมมติ']
-        for pattern in mock_patterns:
-            if re.search(pattern, text):
-                return True
-        return False
-
     def search_agency(self, extracted_entity: str) -> Dict[str, Any]:
         if not extracted_entity:
             return self._build_not_found_response("ไม่พบข้อมูลชื่อหน่วยรับตรวจจากเอกสาร")
-
-        if self._is_mock_data(extracted_entity):
-            return self._build_not_found_response("ตรวจพบว่าเป็นชื่อสมมติ (เช่น ก., ข., แห่งหนึ่ง) ระบบจะไม่จับคู่")
 
         query_key = self._normalize_text(extracted_entity)
         if len(query_key) < 3:

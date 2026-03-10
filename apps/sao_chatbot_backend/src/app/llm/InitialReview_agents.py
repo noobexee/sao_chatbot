@@ -31,9 +31,6 @@ class InitialReviewAgents:
 
     # --- AGENT 1: Criteria 1 (SAO Judge) ---
     def agent_criteria1_judge(self, extracted_entity: str, candidates: list, document_text: str):
-        """
-        AI ศาลเตี้ย (The Judge) สำหรับเลือกว่าชื่อหน่วยงานที่ดึงได้ ตรงกับตัวเลือกใดในฐานข้อมูล
-        """
         options_text = "\n".join([f"{i+1}. {name}" for i, name in enumerate(candidates)])
         
         system_prompt = f"""

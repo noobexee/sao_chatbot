@@ -1,6 +1,5 @@
 from collections import defaultdict
 import os
-import re
 import shutil
 import asyncio
 import tempfile
@@ -19,22 +18,6 @@ from src.app.llm.ocr import TyphoonOCRLoader
 class InitialReviewService:
     def __init__(self):
         self.repo = InitialReviewRepository()
-        self.OCR_CORRECTIONS = {
-            r"โรงพยาบาลบ้านหลวงพ่อ เป็น": "โรวพยาบาลบ้านหลวงพ่อเปิ่น",
-            r"หลวงพ่อ เป็น": "หลวงพ่อเปิ่น",
-            r"โรงเรียนบ้านหนอง ใหญ่": "โรงเรียนบ้านหนองใหญ่",
-            r"เทศบาลตำบล หนอง": "เทศบาลตำบลหนอง",
-            r"องค์การบริหารส่วน ตำบล": "องค์การบริหารส่วนตำบล",
-            r"สถาบันวิจัยและพัฒนา วิทยาศาสตร์และเทคโนโลยี มช.": "สถาบันวิจัยและพัฒนาวิทยาศาสตร์และเทคโนโลยีมช"
-        }
-
-    def _fix_ocr_typos(self, text: str) -> str:
-        if not text:
-            return ""
-        fixed_text = text
-        for wrong_pattern, correct_word in self.OCR_CORRECTIONS.items():
-            fixed_text = re.sub(wrong_pattern, correct_word, fixed_text, flags=re.IGNORECASE)
-        return fixed_text
 
     async def _extract_text_from_file(self, file: UploadFile) -> str:
         temp_path = None
@@ -51,9 +34,7 @@ class InitialReviewService:
             documents = loader.load()
             raw_text = "\n\n".join([doc.page_content for doc in documents])
 
-            cleaned_text = self._fix_ocr_typos(raw_text)
-
-            return cleaned_text
+            return raw_text
         finally:
             if temp_path and os.path.exists(temp_path):
                 os.remove(temp_path)
@@ -101,10 +82,13 @@ class InitialReviewService:
             }
 
             extracted_entity = None
+            print(f"res_c4 from AI: {res_c4}")
             if res_c4 and "details" in res_c4 and "entity" in res_c4["details"]:
                 entity_field = res_c4["details"]["entity"]
+                print(f"Raw entity field from criteria 4: {entity_field}")
                 if isinstance(entity_field, dict):
                     extracted_entity = entity_field.get("value")
+                    print(f"Extracted entity from criteria 4 details: {extracted_entity}")
                 else:
                     extracted_entity = entity_field
 
@@ -114,7 +98,7 @@ class InitialReviewService:
                 if matcher_result.get("status") == "pending_llm":
                     candidates = matcher_result.get("candidates", [])
                     print(
-                        f"🔍 C1 LLM Judge Triggered! Entity: '{extracted_entity}', Candidates (search_keys): {candidates}"
+                        f" C1 LLM Judge Triggered! Entity: '{extracted_entity}', Candidates (search_keys): {candidates}"
                     )
 
                     judge_res = await asyncio.to_thread(

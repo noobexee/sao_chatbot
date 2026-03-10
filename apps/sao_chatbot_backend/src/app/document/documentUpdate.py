@@ -15,7 +15,6 @@ class DocumentUpdater:
         self.embedder = global_embedder
 
     # ---------- Create ----------
-
     def new_document(
         self,
         *,
@@ -69,7 +68,6 @@ class DocumentUpdater:
         return len(chunks)
 
     # ---------- Merge / Snapshot ----------
-
     def merge_documents(
         self,
         *,
