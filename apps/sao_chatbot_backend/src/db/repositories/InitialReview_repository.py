@@ -10,29 +10,31 @@ class InitialReviewRepository:
             conn = get_db_connection()
             cur = conn.cursor()
 
-            if criteria_id == 0:
-                query_ocr = """
-                    INSERT INTO initial_review_ocr_texts 
-                    (session_id, user_id, original_text, edited_text, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, NOW(), NOW())
-                    ON CONFLICT (session_id) 
-                    DO UPDATE SET edited_text = EXCLUDED.edited_text, updated_at = NOW();
-                """
-                cur.execute(query_ocr, (
-                    session_id, 
-                    user_id, 
-                    ai_result.get('original_text', ''), 
-                    ai_result.get('edited_text', '')
-                ))
-                conn.commit()
-                cur.close()
-                return True
-
             query_log = """
                 INSERT INTO initial_review_logs 
                 (user_id, session_id, criteria_id, field_type, ai_value, user_edit, user_value, result_correct, created_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
             """
+
+            if criteria_id == 0:
+                ai_text = ai_result.get('original_text', '')
+                edited_text = ai_result.get('edited_text', '')
+                is_edited = ai_text != edited_text
+
+                cur.execute(query_log, (
+                    user_id,
+                    session_id,
+                    0,
+                    "ocr_text",
+                    ai_text,
+                    is_edited,
+                    edited_text,
+                    True
+                ))
+
+                conn.commit()
+                cur.close()
+                return True
 
             default_correctness = False if feedback == 'down' else True
 
@@ -100,8 +102,7 @@ class InitialReviewRepository:
         finally:
             if conn: conn.close()
     
-    def get_all_sessions(self, user_id: str) -> List[Dict]:
-        """ดึงประวัติการตรวจสอบทั้งหมดของ User คนนั้นๆ"""
+    def get_user_sessions(self, user_id: str) -> List[Dict]:
         conn = None
         try:
             conn = get_db_connection()
@@ -127,29 +128,28 @@ class InitialReviewRepository:
             if conn: conn.close()
 
     def get_review_by_session(self, user_id: str, session_id: str) -> List[Dict]:
-            conn = None
-            try:
-                conn = get_db_connection()
-                cur = conn.cursor()
+        conn = None
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
 
-                query = """
-                    SELECT criteria_id, field_type, ai_value, user_edit, user_value, result_correct
-                    FROM initial_review_logs 
-                    WHERE user_id = %s AND session_id = %s
-                    ORDER BY criteria_id ASC
-                """
-                cur.execute(query, (user_id, session_id))
-                rows = cur.fetchall()
-                cur.close()
-                return rows
-            except Exception as e:
-                print(f"❌ DB Fetch Error: {e}")
-                return []
-            finally:
-                if conn: conn.close()
+            query = """
+                SELECT criteria_id, field_type, ai_value, user_edit, user_value, result_correct
+                FROM initial_review_logs 
+                WHERE user_id = %s AND session_id = %s
+                ORDER BY criteria_id ASC
+            """
+            cur.execute(query, (user_id, session_id))
+            rows = cur.fetchall()
+            cur.close()
+            return rows
+        except Exception as e:
+            print(f"❌ DB Fetch Error: {e}")
+            return []
+        finally:
+            if conn: conn.close()
 
     def delete_session(self, user_id: str, session_id: str) -> bool:
-        """ลบประวัติการตรวจสอบของ Session นั้นๆ"""
         conn = None
         try:
             conn = get_db_connection()
@@ -167,5 +167,3 @@ class InitialReviewRepository:
             return False
         finally:
             if conn: conn.close()
-
-

@@ -26,7 +26,7 @@ class DocumentUpdater:
         
         announce_date = str(doc_data.announce_date)
         effective_date = str(doc_data.effective_date)
-
+        
         chunks = chunk_by_clause(
             text=text,
             law_name=doc_data.title,

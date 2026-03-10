@@ -4,10 +4,10 @@ import React, { useState, useEffect, Suspense, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useInitialReview } from "../InitialReview-context";
 
-import { analyzeDocument } from "../../../libs/InitialReview/analyzeDocument";
-import { saveAiResult } from "../../../libs/InitialReview/saveAIResult";
-import { ocrDocument } from "../../../libs/InitialReview/callOCR"; 
-import { searchAgencyManual } from "../../../libs/InitialReview/searchAgency";
+import { analyzeDocument } from "../../../libs/initialReview/analyzeDocument";
+import { saveAiResult } from "../../../libs/initialReview/saveAIResult";
+import { ocrDocument } from "../../../libs/initialReview/callOCR"; 
+import { searchAgencyManual } from "../../../libs/initialReview/searchAgency";
 
 type criteriaStatus = "neutral" | "pending" | "success" | "fail";
 type FeedbackType = "up" | "down" | null;
@@ -96,7 +96,6 @@ function InitialReviewProcessContent() {
   const { currentFile } = useInitialReview();
 
   const [sessionId, setSessionId] = useState<string | null>(searchParams.get('session_id'));
-  const [userId, setUserId] = useState<string>("test_user_001");
 
   const [showChecklist, setShowChecklist] = useState(false);
   const [criterias, setCriterias] = useState<InitialReviewCriteria[]>(initialCriterias);
@@ -170,7 +169,7 @@ function InitialReviewProcessContent() {
         const blob = new Blob([draftText], { type: "text/plain" });
         const fileToAnalyze = new File([blob], `${currentFile?.name || 'doc'}_edited.txt`, { type: "text/plain" });
 
-        const result = await analyzeDocument(fileToAnalyze, userId, sessionId || undefined);
+        const result = await analyzeDocument(fileToAnalyze, sessionId || undefined);
 
         if (result.status === "success" || result.data) {
             if (result.session_id) {
@@ -382,7 +381,6 @@ function InitialReviewProcessContent() {
     setIsSaving(true);
     try {
       await saveAiResult({
-          user_id: userId,
           session_id: sessionId,
           criteria_id: 0, 
           result: {
@@ -415,7 +413,6 @@ function InitialReviewProcessContent() {
           }
 
           await saveAiResult({
-              user_id: userId,
               session_id: sessionId,
               criteria_id: criteria.id,
               result: resultData,
@@ -652,7 +649,7 @@ function InitialReviewProcessContent() {
   };
 
   return (
-    <div className="flex h-full w-full flex-row overflow-hidden bg-[#f9fafb]">
+    <div className="flex h-full w-full flex-row overflow-hidden bg-[#f9fafb] text-gray-800">
       {/* LEFT PANEL: View/Edit Doc */}
       <div className="flex-1 overflow-y-auto p-4 md:p-8 flex justify-center bg-[#f0f2f5]">
         <div className="flex flex-col h-full w-full max-w-[800px] min-h-[1000px] bg-white shadow-sm border border-gray-200 relative">
@@ -686,7 +683,7 @@ function InitialReviewProcessContent() {
             {viewMode === "text" && (
                 <div className="w-full h-full bg-white overflow-y-auto p-6 md:p-8 relative">
                     {isOCRLoading && <div className="absolute inset-0 bg-white/80 z-20 flex items-center justify-center"><p className="text-blue-600 animate-pulse">Extracting Text...</p></div>}
-                    {isEditingText ? <textarea value={draftText} onChange={(e) => setDraftText(e.target.value)} className="w-full h-full min-h-[500px] border border-gray-200 rounded p-6 font-mono text-sm resize-none" /> : <pre className="whitespace-pre-wrap text-sm font-mono text-gray-800">{docText || "No text content."}</pre>}
+                    {isEditingText ? <textarea value={draftText} onChange={(e) => setDraftText(e.target.value)} className="w-full h-full min-h-[500px] border border-gray-200 rounded p-6 font-mono text-sm resize-none" /> : <pre className="whitespace-pre-wrap text-sm font-mono text-gray-900">{docText || "No text content."}</pre>}
                 </div>
             )}
           </div>
@@ -694,7 +691,7 @@ function InitialReviewProcessContent() {
       </div>
 
       {/* RIGHT PANEL: Checklist */}
-      <div className="w-[500px] shrink-0 flex flex-col gap-6 border-l border-gray-200 bg-white p-6 overflow-y-auto">
+      <div className="w-[500px] shrink-0 flex flex-col gap-6 border-l border-gray-200 bg-white text-gray-800 p-6 overflow-y-auto">
         {!showChecklist ? (
             <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-bold text-[#1e293b] mb-2">เริ่มต้นการตรวจสอบด้วย AI</h2>

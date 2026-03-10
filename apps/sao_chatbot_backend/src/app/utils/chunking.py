@@ -102,6 +102,7 @@ def chunk_by_clause(
     document_id: Optional[str] = None,
     doc_type: str = None,
 ) -> List[Dict]:
+
     ext_law_name, ext_refs, lines = extract_header_and_footer(text)
     final_law_name = law_name if law_name is not None else ext_law_name
 

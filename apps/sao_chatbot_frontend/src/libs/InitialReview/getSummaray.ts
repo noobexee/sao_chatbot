@@ -1,4 +1,3 @@
-import { resourceLimits } from "node:worker_threads";
 import { getBaseUrl } from "../config";
 
 export interface ReviewSummaryData {
@@ -24,11 +23,17 @@ export interface ReviewSummaryData {
     criteria_8: { [key: string]: string | null } | null;
 }
 
-
 export async function getReviewSummary(sessionId: string): Promise<ReviewSummaryData> {
     const baseUrl = getBaseUrl();
+    const token = localStorage.getItem("token");
+
     const response = await fetch(
-        `${baseUrl}/api/v1/InitialReview/${sessionId}/summary`
+        `${baseUrl}/api/v1/InitialReview/${sessionId}/summary`,
+        {
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+        }
     );
 
     if (!response.ok) {

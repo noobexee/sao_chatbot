@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown"; 
 import { useRouter } from "next/navigation";
-import sendMessage from "@/libs/sendMessage";
+import sendMessage from "@/libs/chatbot/sendMessage";
 
 interface Reference {
   name: string;

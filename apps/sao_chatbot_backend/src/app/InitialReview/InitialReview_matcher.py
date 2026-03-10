@@ -17,15 +17,22 @@ class AgencyMatcher:
         }
 
     def _normalize_text(self, text: str) -> str:
-        if not text: return ""
-        text = str(text).strip()
-        for bad, good in self.TYPO_FIXES.items():
-            text = text.replace(bad, good)
-        text = re.sub(r'โรงเรีย(?![น])', 'โรงเรียน', text)
-        for short, full in self.THAI_ABBREVIATIONS.items():
-            text = text.replace(short, full)
+        if not text: return "" #✅ handle None or empty string case early
+        text = str(text).strip() #✅remove space 
         text = text.replace(" ", "").replace("\u200b", "") 
-        text = re.sub(r'[^ก-๙a-zA-Z0-9]', '', text)
+
+        for bad, good in self.TYPO_FIXES.items(): # ❌ why have this? should already handle with fuzzy matching
+            text = text.replace(bad, good)          # to little fix try do prefix/suffix match/fix
+
+        text = re.sub(r'โรงเรีย(?![น])', 'โรงเรียน', text)    # ❌ too hard code not cover all 'โรงเรียน' case(36097/70000 case)
+                                                            # repetition with TYPO_FIXES
+                                                            # try handle with fuzzy matching or prefix/suffix match/fix instead of hard code like this
+
+        for short, full in self.THAI_ABBREVIATIONS.items(): #✅ cover most of the case in db 
+            text = text.replace(short, full) 
+
+        text = re.sub(r'[^ก-๙a-zA-Z0-9]', '', text) #✅ replace all non-alphanumeric Thai/English characters (including punctuation) with empty string
+        
         return text.lower()
 
     def _is_mock_data(self, text: str) -> bool:

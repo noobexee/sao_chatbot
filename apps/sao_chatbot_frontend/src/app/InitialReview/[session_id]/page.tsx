@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { getReviewSummary, ReviewSummaryData } from "../../../libs/InitialReview/getSummaray";
+import { getReviewSummary, ReviewSummaryData } from "../../../libs/initialReview/getSummaray";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Print CSS
