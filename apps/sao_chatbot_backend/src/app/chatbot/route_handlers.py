@@ -238,21 +238,21 @@ def map_references_to_document_ids(retrieved_docs: List[Dict[str, Any]], refs_li
                 
     return ref_dict
 
-async def handle_legal_rag(query: str, history: list, llm:Any, retriever:Retriever) -> RAGResponse:
+async def handle_legal_rag(query: str, history: list, llm:Any, retriever:Retriever, k=3) -> RAGResponse:
     route = await get_legal_route(query, history, llm)
     if route == "ORDER":
-        retrieved_docs = await retriever.retrieve_order(user_query=query, k=3, history=history)
+        retrieved_docs = await retriever.retrieve_order(user_query=query, k=k, history=history)
     elif route == "GUIDELINE":
-        retrieved_docs = await retriever.retrieve_guideline(user_query=query, k=3, history=history)
+        retrieved_docs = await retriever.retrieve_guideline(user_query=query, k=k, history=history)
     elif route == "STANDARD":
-        retrieved_docs = await retriever.retrieve_standard(user_query=query, k=3, history=history)
+        retrieved_docs = await retriever.retrieve_standard(user_query=query, k=k, history=history)
     elif route == "REGULATION" :
-        retrieved_docs = await retriever.retrieve_regulation(user_query=query, k=3, history=history)
+        retrieved_docs = await retriever.retrieve_regulation(user_query=query, k=k, history=history)
     else:
-        retrieved_docs = await retriever.retrieve_general(query=query, k=3, history=history)
+        retrieved_docs = await retriever.retrieve_general(query=query, k=k, history=history)
 
     context_str = format_regulation_context(retrieved_docs)
-    history_str = "\n".join([f"{msg.type}: {msg.content}" for msg in history[-5:]]) if history else "No history."
+    history_str = "\n".join([f"{msg.type}: {msg.content}" for msg in history[-k:]]) if history else "No history."
     parser = JsonOutputParser(pydantic_object=LegalResponseSchema)
     
     prompt = ChatPromptTemplate.from_messages([
