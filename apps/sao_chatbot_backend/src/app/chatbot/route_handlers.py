@@ -1,11 +1,14 @@
+import asyncio
 from typing import List, Any, Dict, Optional
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from pydantic import BaseModel, Field
 from langchain_core.output_parsers import JsonOutputParser
+from src.db.repositories.document_repository import DocumentRepository
+from src.app.chatbot.schemas import RAGResponse
 from src.app.chatbot.retriever import Retriever
 from .utils.formatters import format_regulation_context
-
+from thefuzz import process, fuzz
 
 class LegalResponseSchema(BaseModel):
     answer_text: str = Field(description="The natural Thai response starting with 'จากข้อ... ของระเบียบ...'")
@@ -15,7 +18,7 @@ class FileResponse(BaseModel):
     answer_text: str = Field(description="A polite, formal Thai response (e.g., 'ขออนุญาตนำส่งเอกสาร').")
     target_files: List[str] = Field(description="List of exact filenames found. Empty list if none.")
 
-async def handle_chitchat(query: str, history: list, llm):
+async def handle_chitchat(query: str, history: list, llm) -> RAGResponse:
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", """
@@ -54,55 +57,102 @@ async def handle_chitchat(query: str, history: list, llm):
     
     answer = await chain.ainvoke({"input": query})
     
-    return answer, []
+    return RAGResponse(answer=answer, ref={})
 
-async def handle_file_request(query: str, history: list, llm: Any):
+async def handle_file_request(query: str, history: list, llm: Any) -> RAGResponse:
     parser = JsonOutputParser(pydantic_object=FileResponse)
     
-    available_files_list = [
-        "แนวทางการปฏิบัติงาน_SAO.pdf",
-        "ระเบียบการเบิกจ่าย_2567.pdf"
-    ]
-    files_context = "\n".join(available_files_list)
+    repo = DocumentRepository()
+    try:
+        all_docs = await asyncio.to_thread(repo.list_documents)
+    except Exception as e:
+        print(f"Database error: {e}")
+        return RAGResponse(answer="ขออภัยครับ ไม่สามารถเชื่อมต่อฐานข้อมูลได้ในขณะนี้", ref={})
+
+    title_to_id = {doc["title"]: doc["id"] for doc in all_docs if doc.get("title") and doc.get("id")}
+    available_titles = list(title_to_id.keys())
+
+    if not available_titles:
+        return RAGResponse(answer="ระบบยังไม่มีไฟล์เอกสารในขณะนี้ครับ", ref={})
+
+    fuzzy_results = process.extract(
+        query, 
+        available_titles, 
+        limit=10, 
+        scorer=fuzz.token_set_ratio
+    )
+    
+    matched_titles = [res[0] for res in fuzzy_results if res[1] >= 65]
+
+    if matched_titles:
+        files_context = "Found the following exact files in the database:\n" + "\n".join(matched_titles)
+        system_instruction = "Inform the user that you found the requested file(s) and return the exact file names in the 'target_files' list."
+    else:
+        files_context = "System checked but NO files matched the user's query."
+        system_instruction = "Politely apologize to the user and state that the requested file could not be found. Return an empty list for 'target_files'."
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", """
-        You are a smart "File Librarian" for the Office of the Ombudsman.
-        Respond in Formal Thai.
+        You are a professional File Librarian for the State Audit Office (SAO / สตง.).
+        Your task is to review the 'System Search Results' and provide the correct file(s) to the user.
+
+        RULES:
+        1. Tone: Respond in polite, formal Thai suitable for a government agency.
+        2. Multiple Files: You can return MORE THAN ONE file in the 'target_files' list.
+        3. Version Handling (พ.ศ. / ฉบับที่): 
+           - If the user asks for a document WITHOUT specifying a year or version, you MUST return ALL versions of that document found in the 'System Search Results'.
+           - If the user asks for a SPECIFIC year or version, return ONLY the file that matches that specific year.
+        4. Strict Formatting: You MUST copy the file names EXACTLY as they appear in the 'System Search Results' into the 'target_files' list. Do not change spelling, spacing, or extensions.
+        5. No Hallucinations: Do not invent file names. If 'System Search Results' says NO files matched, 'target_files' MUST be an empty list [].
+        
         {format_instructions}
+        
+        System Instruction: {instruction}
         """),
         ("human", """
-        Available Files:
+        System Search Results:
         {context}
 
+        Chat History: {history}
         User Query: {query}
-        History: {history}
-        """),
+        """)
     ])
+    
     chain = (
         {
-                "context": lambda x: files_context,
-                "query": lambda x: query,
-                "history": lambda x: history,
-                "format_instructions": lambda x: parser.get_format_instructions()
+            "context": lambda x: files_context,
+            "instruction": lambda x: system_instruction,
+            "query": lambda x: query,
+            "history": lambda x: history,
+            "format_instructions": lambda x: parser.get_format_instructions()
         }
-            | prompt 
-            | llm
-            | parser
+        | prompt 
+        | llm
+        | parser
     )
 
     try:
-        response = await chain.ainvoke({})
-        return response["answer_text"], response["target_files"]
+        llm_response = await chain.ainvoke({})
+        
+        ref_dict = {}
+        for title in llm_response.get("target_files", []):
+            if title in title_to_id:
+                ref_dict[title] = title_to_id[title] 
+                
+        return RAGResponse(
+            answer=llm_response.get("answer_text", ""),
+            ref=ref_dict
+        )
             
     except Exception as e:
         print(f"Error parsing JSON: {e}")
-        return "ขออภัยครับ เกิดข้อผิดพลาดในการค้นหาไฟล์", []    
+        return RAGResponse(answer="ขออภัยครับ เกิดข้อผิดพลาดในการค้นหาไฟล์ของระบบ", ref={})
+    
+ 
+  
+async def handle_FAQ(query: str, history: list, llm:Any) -> RAGResponse:
 
-
-async def handle_FAQ(query: str, history: list, llm:Any):
-
-    return "ขออภัยครับ ผมไม่มีข้อมูลในส่วนนี้ (ข้อมูลติดต่อหรือที่อยู่หน่วยงาน) ผมสามารถให้ข้อมูลได้เฉพาะเรื่องกฎหมายและระเบียบการตรวจสอบเท่านั้นครับ", []
+    return RAGResponse(answer="ขออภัยครับ ผมไม่มีข้อมูลในส่วนนี้ (ข้อมูลติดต่อหรือที่อยู่หน่วยงาน) ผมสามารถให้ข้อมูลได้เฉพาะเรื่องกฎหมายและระเบียบการตรวจสอบเท่านั้นครับ", ref=[])
 
 async def get_legal_route(query: str, history_messages: list, llm: Any) -> str:
 
@@ -163,32 +213,58 @@ async def get_legal_route(query: str, history_messages: list, llm: Any) -> str:
     except Exception as e:
         print(f"Routing Error: {e}")
         return "GENERAL"
-    
-async def handle_legal_rag(query: str, history: list, llm:Any, retriever:Retriever):
+
+def map_references_to_document_ids(retrieved_docs: List[Dict[str, Any]], refs_list: List[str]) -> Dict[str, Optional[str]]:
+    """
+    Maps LLM-generated reference strings to their corresponding document IDs 
+    based on the retrieved documents metadata.
+    """
+    doc_mapping = {}
+    for doc in retrieved_docs:
+        if "law_name" in doc and "document_id" in doc:
+            doc_mapping[doc["law_name"]] = doc["document_id"]
+            
+        for related_doc in doc.get("related_documents", []):
+            if "law_name" in related_doc and "document_id" in related_doc:
+                doc_mapping[related_doc["law_name"]] = related_doc["document_id"]
+
+    ref_dict = {}
+    for ref in refs_list:
+        ref_dict[ref] = None 
+        for db_law_name, db_doc_id in doc_mapping.items():
+            if db_law_name in ref or ref in db_law_name:
+                ref_dict[ref] = db_doc_id
+                break 
+                
+    return ref_dict
+
+async def handle_legal_rag(query: str, history: list, llm:Any, retriever:Retriever, k=3) -> RAGResponse:
     route = await get_legal_route(query, history, llm)
     if route == "ORDER":
-        retrieved_docs = await retriever.retrieve_order(user_query=query, k=3, history=history)
-        
+        retrieved_docs = await retriever.retrieve_order(user_query=query, k=k, history=history)
     elif route == "GUIDELINE":
-        retrieved_docs = await retriever.retrieve_guideline(user_query=query, k=3, history=history)
-        
+        retrieved_docs = await retriever.retrieve_guideline(user_query=query, k=k, history=history)
     elif route == "STANDARD":
-        retrieved_docs = await retriever.retrieve_standard(user_query=query, k=3, history=history)
+        retrieved_docs = await retriever.retrieve_standard(user_query=query, k=k, history=history)
     elif route == "REGULATION" :
-        retrieved_docs = await retriever.retrieve_regulation(user_query=query, k=3, history=history)
+        retrieved_docs = await retriever.retrieve_regulation(user_query=query, k=k, history=history)
     else:
-        retrieved_docs = await retriever.retrieve_general(query=query, k=3, history=history)
+        retrieved_docs = await retriever.retrieve_general(query=query, k=k, history=history)
 
     context_str = format_regulation_context(retrieved_docs)
-    history_str = "\n".join([f"{msg.type}: {msg.content}" for msg in history[-5:]]) if history else "No history."
+    history_str = "\n".join([f"{msg.type}: {msg.content}" for msg in history[-k:]]) if history else "No history."
     parser = JsonOutputParser(pydantic_object=LegalResponseSchema)
     
     prompt = ChatPromptTemplate.from_messages([
         ("system", """
         ### ROLE
         You are a specialized Thai Legal Assistant for the State Audit Office (สตง.).
-        Provide a helpful, direct answer followed by structured legal references in JSON format.
-
+         
+        ### MANDATORY JSON FORMATTING
+        - YOUR ENTIRE RESPONSE MUST BE A VALID JSON OBJECT. 
+        - DO NOT provide any text, greetings, or summaries outside of the JSON keys.
+        - Start with '{{' and end with '}}'.
+         
         ### CRITICAL FORMATTING RULES
         1. NO MARKDOWN: Do not use double asterisks (**), italics, or bolding in the 'answer_text'. Use plain text only.
         2. NO HALLUCINATED SECTIONS: When the context says "ให้นำหลักเกณฑ์ตาม (๑) มาใช้บังคับ" within a specific Section (e.g., Section 26), identify it correctly as "ข้อ 26 (1)". Do not guess the Section number if it is not explicitly linked in that sentence.
@@ -202,7 +278,11 @@ async def handle_legal_rag(query: str, history: list, llm:Any, retriever:Retriev
         4. Precise Referencing: If a sub-clause points to another sub-clause (e.g., "ตาม (1)"), ensure you refer to it as the full clause name (e.g., "ข้อ 26 (1)").
 
         ### INSTRUCTIONS FOR 'used_law_names'
-        - List ONLY titles cited in the 'answer_text'. Accuracy is mandatory.
+        1. List the legal citations used in 'answer_text' exactly as they appear in the REFERENCE_LABEL.
+        2. STRICT FORMATTING RULES:
+        - If the document is a 'ระเบียบ': Use "ข้อ [เลขข้อ] [ชื่อระเบียบ]" (e.g., ข้อ 5 ระเบียบสำนักงานตรวจเงินแผ่นดิน).
+        - For all other types (คำสั่ง, แนวทาง, มาตรฐาน): Use ONLY the law name (e.g., คำสั่งสำนักงานตรวจเงินแผ่นดิน ที่ 1/2566).
+        3. Do not add any text or bolding inside the JSON array.
 
         {format_instructions}
 
@@ -228,10 +308,11 @@ async def handle_legal_rag(query: str, history: list, llm:Any, retriever:Retriev
         result = await chain.ainvoke({})
         
         answer = result.get("answer_text", "ขออภัย ไม่พบข้อมูลที่เกี่ยวข้อง")
-        refs = result.get("used_law_names", [])
+        refs_list = result.get("used_law_names", [])
+        ref_dict = map_references_to_document_ids(retrieved_docs, refs_list)
         
-        return answer, refs
+        return RAGResponse(answer=answer, ref=ref_dict)
 
     except Exception as e:
         print(f"Extraction Error: {e}")
-        return "ขออภัย ระบบขัดข้องในการประมวลผลข้อมูลทางกฎหมาย", []  
+        return "ขออภัย ระบบขัดข้องในการประมวลผลข้อมูลทางกฎหมาย", {}

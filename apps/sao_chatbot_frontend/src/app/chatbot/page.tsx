@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation"; 
 import { v4 as uuidv4 } from "uuid"; 
-import sendMessage from "@/libs/sendMessage";
+import sendMessage from "@/libs/chatbot/sendMessage";
 
 export default function ChatPage() {
   const [input, setInput] = useState("");

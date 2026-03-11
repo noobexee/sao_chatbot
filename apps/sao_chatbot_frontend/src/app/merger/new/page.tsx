@@ -227,18 +227,35 @@ export default function NewDocumentPage() {
           </div>
 
           {/* ===== Optional files ===== */}
-          <div className="space-y-1">
+          <div className="space-y-2">
             <label className="text-sm font-medium">
               ไฟล์ที่เกี่ยวข้อง (ถ้ามี)
             </label>
+
             <input
               type="file"
               multiple
-              onChange={(e) =>
-                setOptionalFiles(Array.from(e.target.files ?? []))
-              }
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                setOptionalFiles((prev) => [...prev, ...files]);
+              }}
               className="block w-full text-sm"
             />
+
+            {/* ✅ Simple file name list */}
+            {optionalFiles.length > 0 && (
+              <ul className="text-sm list-disc pl-5">
+                {optionalFiles.map((file, index) => {
+                  const name = file.name;
+                  const ext = name.includes(".") ? name.split(".").pop() : "";
+                  return (
+                    <li key={index}>
+                      {name} {ext ? `(.${ext})` : ""}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
 
           {/* ===== Type ===== */}

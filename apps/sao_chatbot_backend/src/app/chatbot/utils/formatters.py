@@ -38,23 +38,33 @@ def format_regulation_context(docs: List[Dict]) -> str:
         ref_id = f"REG_{i}"
         law_name = doc.get('law_name', 'Unknown Regulation')
         clause_no = clean_clause_id(doc.get('id', ''))
-        main_text = doc.get('text', '')
-        
+    
+        if "ระเบียบ" in law_name:
+            full_ref = f"ข้อ {clause_no} {law_name}" if clause_no else law_name
+        else:
+            full_ref = law_name
+
         content = [
-            f"### [{ref_id}]",
+            f"### [{ref_id}] REFERENCE_LABEL: {full_ref}",
             f"Source Name: {law_name}",
             f"Clause/ID: {clause_no}",
-            f"Content: {main_text}"
+            f"Content: {doc.get('text', '')}"
         ]
         
-        # Related Guidelines/Orders
         related = doc.get('related_documents', [])
         if related:
             content.append("\n--- RELATED GUIDELINES/ORDERS ---")
             for j, rel in enumerate(related, 1):
-                guide_id = f"{ref_id}_SUB_{j}"
-                content.append(f"[{guide_id}] Title: {rel.get('law_name')}\nContent: {rel.get('text')}")
+                rel_name = rel.get('law_name', '')
+                content.append(f"[{ref_id}_SUB_{j}] Title: {rel_name}\nContent: {rel.get('text')}")
         
         formatted_output.append("\n".join(content))
             
-    return "\n\n====================\n\n".join(formatted_output)   
+    return "\n\n====================\n\n".join(formatted_output)
+
+def simplify_thai_text(text: str) -> str:
+    """Converts to Arabic AND removes all whitespace for a 'pure' string match."""
+    if not text: return ""
+    text = thai_to_arabic(text)
+    text = re.sub(r'[\s\u00A0\t\n\r]+', '', text)
+    return text

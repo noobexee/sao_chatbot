@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from src.config.logging_config import setup_logging
 from src.api.v1.router import api_router 
+
+setup_logging()
 
 app = FastAPI(
     title="RAG Backend API",

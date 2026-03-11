@@ -1,68 +1,63 @@
 from typing import List, Any, Dict, Optional
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.documents import Document
-from pydantic import BaseModel, Field
-from langchain_core.output_parsers import JsonOutputParser
-from src.app.llm.typhoon import TyphoonLLM
+from src.app.llm.llm_manager import get_llm
 from src.app.chatbot.schemas import RAGResponse
 from src.app.chatbot.retriever import Retriever
 from src.db.repositories.chat_repository import ChatRepository
 from .route_handlers import handle_chitchat, handle_file_request, handle_FAQ, handle_legal_rag, get_legal_route
+import logging
 from langchain_core.globals import set_debug
 
-class LegalResponseSchema(BaseModel):
-    answer_text: str = Field(description="The natural Thai response starting with 'จากข้อ... ของระเบียบ...'")
-    used_law_names: List[str] = Field(description="List of exact law_names or guideline_names from the context that were used to answer the question.")
-
-class FileResponse(BaseModel):
-    answer_text: str = Field(description="A polite, formal Thai response (e.g., 'ขออนุญาตนำส่งเอกสาร').")
-    target_files: List[str] = Field(description="List of exact filenames found. Empty list if none.")
+logger = logging.getLogger(__name__)
     
 class Chatbot:
     def __init__(self):
-        self.llm = TyphoonLLM()
+        self.llm_service = get_llm() 
+        self.llm = self.llm_service.get_model()
         self.repository = ChatRepository()
         self.retriever = Retriever()
 
     def _get_history_objects(self, user_id: str, session_id: str) -> List[Any]:
-        rows = self.repository.get_messages_by_session(user_id, session_id)
-        print(rows)
-        messages = []
-        for row in rows:
-            if row[0]: messages.append(HumanMessage(content=row[0]))
-            if row[1]: messages.append(AIMessage(content=row[1]))
-        return messages
-
-    def _format_docs_with_sources(self, docs: List[Document]) -> str:
-        if not docs:
-            return "No relevant legal documents found."
-            
-        formatted_chunks = []
-        i = 1
-        for doc in docs:
-            formatted_chunks.append(f"Chunk {i} Title: {doc.get('law_name')} \n{doc.get('text')}")
-            i += 1
-            
-        return "\n\n---\n\n".join(formatted_chunks)
-
+        try:
+            rows = self.repository.get_messages_by_session(user_id, session_id)
+            messages = []
+            for row in rows:
+                if row[0]: messages.append(HumanMessage(content=row[0]))
+                if row[1]: messages.append(AIMessage(content=row[1]))
+            return messages
+        except Exception as e:
+            logger.warning(f"Session history retrieval failed for {session_id}. Proceeding with empty history.")
+            return []
+ 
     def get_session_history(self, user_id: str, session_id: str) -> List[Dict]:
-        rows = self.repository.get_messages_by_session(user_id, session_id)
-        formatted_history = []
-        for row in rows:
-            timestamp = row[2].isoformat() if row[2] else ""
-            formatted_history.append({"role": "user", "content": row[0], "created_at": timestamp})
-            formatted_history.append({"role": "assistant", "content": row[1], "created_at": timestamp})
-        return formatted_history
+        try :
+            rows = self.repository.get_messages_by_session(user_id, session_id)
+            formatted_history = []
+            for row in rows:
+                timestamp = row[2].isoformat() if row[2] else ""
+                
+                formatted_history.append({"role": "user", "content": row[0], "created_at": timestamp})
+                
+                formatted_history.append({
+                    "role": "assistant", 
+                    "content": row[1], 
+                    "created_at": timestamp,
+                    "references": row[3] if len(row) > 3 else [] 
+                })
+            return formatted_history
+        except Exception as e:
+            logger.warning(f"Session history retrieval failed: {e}")
+            return []
 
     def get_user_sessions(self, user_id: str) -> List[Dict]:
-        return self.repository.get_user_sessions_summary(user_id)
+        try : 
+            return self.repository.get_user_sessions_summary(user_id)
+        except Exception as e:
+            logger.warning(f"Session retrieval failed for {user_id}. Proceeding with empty history.")
+            return []
 
     def delete_session_history(self, user_id: str, session_id: str) -> Dict[str, Any]:
-        """
-        Deletes a specific chat session.
-        """
         try:
             success = self.repository.delete_session(user_id, session_id)
             if success:
@@ -133,7 +128,7 @@ class Chatbot:
             "query": lambda x: query
         }
         | routing_prompt 
-        | self.llm.get_model()
+        | self.llm
     )
         try:
 
@@ -152,38 +147,44 @@ class Chatbot:
             return "LEGAL_RAG"
 
     async def answer_question(self, user_id: str, session_id: str, query: str) -> RAGResponse: 
-
-        history_messages = self._get_history_objects(user_id, session_id)
-
-        route = await self._get_routing_decision(query, history_messages)
-
+        log_prefix = f"[User: {user_id} | Session: {session_id}]"
         try:
-            if route == "CHITCHAT":
-                response_text, refs_data = await handle_chitchat(query, history_messages, self.llm.get_model())
-                
-            elif route == "FILE_REQUEST":
-                response_text, refs_data = await handle_file_request(query, history_messages, self.llm.get_model())
+            logger.info(f"{log_prefix} Received query: {query[:50]}...")
+            history_messages = self._get_history_objects(user_id, session_id)
+            route = await self._get_routing_decision(query, history_messages)
+            logger.info(f"{log_prefix} Routed to: {route}")
 
-            elif route == "FAQ":
-                response_text, refs_data = await handle_FAQ(query, history_messages, self.llm.get_model())
-                
-            else:
-                response_text, refs_data = await handle_legal_rag(query, history_messages, self.llm.get_model(), self.retriever)
+            handlers = {
+                "CHITCHAT": handle_chitchat,
+                "FILE_REQUEST": handle_file_request,
+                "FAQ": handle_FAQ,
+                "LEGAL_RAG": lambda q, h, m: handle_legal_rag(q, h, m, self.retriever)
+            }
+            
+            handler = handlers.get(route, handlers["LEGAL_RAG"])
+            result = await handler(query, history_messages, self.llm)
+            response_text = result.answer
+            refs_data = result.ref
+
+            try:
+                self.repository.save_message(
+                    user_id, 
+                    session_id, 
+                    query, 
+                    response_text, 
+                    refs=refs_data
+                )
+            except Exception as db_err:
+                logger.error(f"Database save failed: {db_err}")
+
+            return RAGResponse(answer=response_text, ref=refs_data)
 
         except Exception as e:
-            print(f"Handler Failed: {e}")
-            response_text = "ขออภัย ระบบเกิดข้อผิดพลาดในการประมวลผลคำตอบ"
+            logger.error(f"{log_prefix} Failed to process: {e}", exc_info=True)
             return RAGResponse(
-                answer=response_text, 
-                ref=refs_data 
-            )    
-
-        self.repository.save_message(user_id, session_id, query, response_text)
-
-        return RAGResponse(
-            answer=response_text, 
-            ref=refs_data 
-        )     
+                answer="ขออภัย ระบบขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้งในภายหลัง",
+                ref={}
+            )  
 
 chatbot = Chatbot()
 

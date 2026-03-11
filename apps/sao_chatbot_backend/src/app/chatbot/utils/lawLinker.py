@@ -54,37 +54,3 @@ class LawLinker:
 
 linker = LawLinker()
 
-# CASE 1: The 2025 Version (ฉบับที่ ๒)
-doc_v2 = {
-    "id": "ข้อ 53",
-    "law_name": "ระเบียบสำนักงานการตรวจเงินแผ่นดินว่าด้วยการตรวจสอบการปฏิบัติตามกฎหมาย (ฉบับที่ ๒) พ.ศ. ๒๕๖๘",
-    "text": "..."
-}
-
-# CASE 2: The 2023 Version (The Original)
-doc_v1 = {
-    "id": "ข้อ 53",
-    "law_name": "ระเบียบสำนักงานการตรวจเงินแผ่นดินว่าด้วยการตรวจสอบการปฏิบัติตามกฎหมาย พ.ศ. ๒๕๖๖",
-    "text": "..."
-}
-
-# CASE 3: A Different Law entirely
-doc_diff = {
-    "id": "ข้อ 4",
-    "law_name": "ระเบียบสำนักงานการตรวจเงินแผ่นดินว่าด้วยการปฏิบัติหน้าที่ของเจ้าหน้าที่ที่ได้รับมอบหมาย พ.ศ. 2562",
-    "text": "..."
-}
-
-print("--- Test Case 1: 2025 Version ---")
-links_1 = linker.get_linked_orders(doc_v2)
-print(f"Result: {links_1}") 
-# Expected: matches the base name, returns Order 20/2566
-
-print("\n--- Test Case 2: 2023 Version ---")
-links_2 = linker.get_linked_orders(doc_v1)
-print(f"Result: {links_2}") 
-# Expected: matches the SAME base name, returns SAME Order 20/2566
-
-print("\n--- Test Case 3: Different Law ---")
-links_3 = linker.get_linked_orders(doc_diff)
-print(f"Result: {links_3}")

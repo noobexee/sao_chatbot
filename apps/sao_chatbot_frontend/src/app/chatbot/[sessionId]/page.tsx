@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import getChatHistory from "@/libs/getChatHistory";
+import getChatHistory from "@/libs/chatbot/getChatHistory";
 import ChatWindow from "@/components/ChatWindow";
 
 interface PageProps {

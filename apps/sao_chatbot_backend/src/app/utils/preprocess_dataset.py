@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import Optional, List
 import numpy as np
-from src.app.utils.embedding import BGEEmbedder
+from src.app.utils.embedding import BGEEmbedder, global_embedder
 from src.db.vector_store.vector_store import VectorStoreTransaction 
 
 BASE_STORAGE = "storage"
@@ -45,7 +45,7 @@ def run_indexing_pipeline(metadata_folder: str, is_regulation_folder: bool = Fal
     Bulk function: Accepts the flag to pass down to the indexer.
     """
     print(f"\nStarting Bulk Indexing for Folder: {metadata_folder} (Regulation={is_regulation_folder})")
-    embedder = BGEEmbedder()
+    embedder = global_embedder
     
     json_files = list(Path(metadata_folder).glob("**/*.json"))
     

@@ -1,9 +1,10 @@
 import { getBaseUrl } from "../config";
 
 export interface SaveResultPayload {
-    InitialReview_id: string;
+    session_id: string;
     criteria_id: number;
-    result: any; // The structured data from the criteria
+    result: any;
+    feedback?: "up" | "down" | null;
 }
 
 export interface SaveResultResponse {
@@ -13,10 +14,15 @@ export interface SaveResultResponse {
 
 export async function saveAiResult(payload: SaveResultPayload): Promise<SaveResultResponse> {
     const baseUrl = getBaseUrl();
+    const token = localStorage.getItem("token");
+
     try {
         const response = await fetch(`${baseUrl}/api/v1/InitialReview/save_result`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+            },
             body: JSON.stringify(payload),
         });
 

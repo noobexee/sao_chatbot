@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.db.connection import get_db_connection
+from dotenv import load_dotenv
+
 
 def drop_all_tables():
     conn = None

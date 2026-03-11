@@ -1,7 +1,7 @@
 from pathlib import Path
 import tempfile
 import shutil
-from src.db.repositories.ocr_repository import OCRRepository
+from src.db.repositories.doc_ocr_repository import OCRRepository
 from src.app.llm.ocr import TyphoonOCRLoader
 from langchain_core.documents import Document
 

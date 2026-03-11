@@ -1,27 +1,35 @@
 import { getBaseUrl } from "../config";
 
-// You might want to define stricter types for the AI result here
 export interface AnalyzeResponse {
     status: string;
-    data: {
-        criteria1: any;
-        criteria2: any; 
-        criteria4: any; 
-        criteria6: any;
-        criteria8: any;
-        raw_text?: string;
-    };
+    session_id?: string; 
+    user_id?: string;    
+    data?: any;
     message?: string;
 }
 
-export async function analyzeDocument(file: File): Promise<AnalyzeResponse> {
+export async function analyzeDocument(
+    file: File,
+    sessionId?: string | null
+): Promise<AnalyzeResponse> {
+
     const baseUrl = getBaseUrl();
     const formData = new FormData();
+
+    const token = localStorage.getItem("token");
+
     formData.append("file", file);
+
+    if (sessionId) {
+        formData.append("session_id", sessionId);
+    }
 
     try {
         const response = await fetch(`${baseUrl}/api/v1/InitialReview/analyze`, {
             method: "POST",
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
             body: formData,
         });
 
@@ -30,6 +38,7 @@ export async function analyzeDocument(file: File): Promise<AnalyzeResponse> {
         }
 
         return await response.json();
+
     } catch (error) {
         console.error("API Error (analyzeDocument):", error);
         throw error;

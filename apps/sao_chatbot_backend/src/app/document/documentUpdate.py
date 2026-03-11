@@ -1,6 +1,6 @@
 from datetime import date
 from src.app.utils.chunking import chunk_by_clause
-from src.app.utils.embedding import BGEEmbedder
+from src.app.utils.embedding import BGEEmbedder, global_embedder
 from src.app.utils.preprocess_dataset import (
     delete_document_pipeline,
     index_single_json_file,
@@ -12,10 +12,9 @@ from src.app.document.documentSchemas import DocumentMeta
 
 class DocumentUpdater:
     def __init__(self):
-        self.embedder = BGEEmbedder()
+        self.embedder = global_embedder
 
     # ---------- Create ----------
-
     def new_document(
         self,
         *,
@@ -26,7 +25,7 @@ class DocumentUpdater:
         
         announce_date = str(doc_data.announce_date)
         effective_date = str(doc_data.effective_date)
-
+        
         chunks = chunk_by_clause(
             text=text,
             law_name=doc_data.title,
@@ -36,8 +35,10 @@ class DocumentUpdater:
             document_id=doc_id,
             doc_type=doc_data.type,
         )
-
-        index_single_json_file(chunks, embedder=self.embedder)
+        if doc_data.type == "ระเบียบ" :
+            index_single_json_file(chunks, embedder=self.embedder, is_regulation=True)
+        else :
+            index_single_json_file(chunks, embedder=self.embedder, is_regulation=False)
         return len(chunks)
 
     # ---------- Edit ----------
@@ -67,21 +68,21 @@ class DocumentUpdater:
         return len(chunks)
 
     # ---------- Merge / Snapshot ----------
-
     def merge_documents(
         self,
         *,
         doc_data: DocumentMeta,
         old_doc_id: str,
         new_doc_id: str,
+        amend_doc_id: str,
         text: str,
         expire_date: date,
-    ) -> int:
         
+    ) -> int:
         announce_date = str(doc_data.announce_date)
         effective_date = str(doc_data.effective_date)
         expire_date = str(expire_date)
-
+        delete_document_pipeline(amend_doc_id)
         update_document_expiry_pipeline(old_doc_id, expire_date)
 
         chunks = chunk_by_clause(
@@ -94,7 +95,10 @@ class DocumentUpdater:
             doc_type=doc_data.type,
         )
 
-        index_single_json_file(chunks, embedder=self.embedder)
+        if doc_data.type == "ระเบียบ" :
+            index_single_json_file(chunks, embedder=self.embedder, is_regulation=True)
+        else :
+            index_single_json_file(chunks, embedder=self.embedder, is_regulation=False)
         return len(chunks)
 
     # ---------- Delete ----------
