@@ -128,7 +128,7 @@ class Chatbot:
             "query": lambda x: query
         }
         | routing_prompt 
-        | self.llm.get_model()
+        | self.llm
     )
         try:
 
@@ -162,7 +162,7 @@ class Chatbot:
             }
             
             handler = handlers.get(route, handlers["LEGAL_RAG"])
-            result = await handler(query, history_messages, self.llm.get_model())
+            result = await handler(query, history_messages, self.llm)
             response_text = result.answer
             refs_data = result.ref
 

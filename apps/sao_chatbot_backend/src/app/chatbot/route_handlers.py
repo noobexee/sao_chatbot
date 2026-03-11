@@ -57,7 +57,7 @@ async def handle_chitchat(query: str, history: list, llm) -> RAGResponse:
     
     answer = await chain.ainvoke({"input": query})
     
-    return RAGResponse(answer=answer, ref=[])
+    return RAGResponse(answer=answer, ref={})
 
 async def handle_file_request(query: str, history: list, llm: Any) -> RAGResponse:
     parser = JsonOutputParser(pydantic_object=FileResponse)
