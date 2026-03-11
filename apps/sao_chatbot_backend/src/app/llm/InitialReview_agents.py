@@ -28,8 +28,33 @@ class InitialReviewAgents:
         except Exception as e:
             print(f"Typhoon Error: {e}")
             return None
+
+    # --- AGENT 1: Criteria 1 (SAO Judge) ---
+    def agent_criteria1_judge(self, extracted_entity: str, candidates: list, document_text: str):
+        options_text = "\n".join([f"{i+1}. {name}" for i, name in enumerate(candidates)])
         
-    # --- AGENT 1: Criteria 2 (SAO Authority Check) ---
+        system_prompt = f"""
+        คุณคือ 'ผู้เชี่ยวชาญการตรวจสอบรายชื่อหน่วยงานภาครัฐ'
+        
+        **ภารกิจของคุณ:** จากเอกสารต้นฉบับ มีการอ้างถึงหน่วยงานที่ชื่อว่า: "{extracted_entity}"
+        แต่ในระบบฐานข้อมูล มีชื่อหน่วยงานที่สะกดใกล้เคียงกันดังนี้:
+        {options_text}
+        
+        จงพิจารณาบริบทจากเนื้อหาเอกสาร (เช่น สถานที่, จังหวัด, บริบทแวดล้อม) และวิเคราะห์ว่า "{extracted_entity}" หมายถึงตัวเลือกใดใน {len(candidates)} ข้อนี้
+        
+        **กฎเกณฑ์:**
+        - ต้องตอบเป็นชื่อหน่วยงานที่ปรากฏในตัวเลือกแบบเป๊ะๆ 100% ห้ามเติมแต่ง
+        - หากพิจารณาแล้วพบว่า **"ไม่เข้าข่ายตัวเลือกใดเลย"** ให้ตอบใน selected_candidate ว่า "Not Found"
+
+        **Output Format (JSON):**
+        {{
+            "selected_candidate": "ชื่อหน่วยงานจากตัวเลือก (หรือ Not Found)",
+            "reason": "อธิบายเหตุผลสั้นๆ ว่าทำไมถึงเลือกข้อนี้ (อ้างอิงบริบทจากเอกสาร)"
+        }}
+        """
+        return self._call_typhoon(system_prompt, document_text)
+        
+    # --- AGENT 2: Criteria 2 (SAO Authority Check) ---
     def agent_criteria2_sao_authority(self, text):
         system_prompt = """
         คุณคือ 'ผู้เชี่ยวชาญด้านกฎหมายมหาชนและการตรวจสอบภาครัฐ'
@@ -101,13 +126,17 @@ class InitialReviewAgents:
         """
         return self._call_typhoon(system_prompt, text)
   
-    # --- AGENT 2: criteria 4 (Detailed Sufficiency Check) ---
+    # --- AGENT 3: criteria 4 (Detailed Sufficiency Check) ---
     def agent_criteria4_sufficiency(self, text):
         system_prompt = """
         คุณคือ 'ผู้เชี่ยวชาญด้านการตรวจสอบเรื่องร้องเรียนของ สตง.' หน้าที่คือวิเคราะห์องค์ประกอบของเรื่องร้องเรียน
         
         **คำสั่งสำคัญ:** - ต้องดึงข้อมูลออกมาเป็น **Object เดียวเท่านั้น** (ห้ามตอบเป็น List หรือ Array ใน field 'details')
         - หากพบหลายเหตุการณ์ ให้สรุปรวมเป็นข้อความเดียวในแต่ละ field
+
+        **กฎเหล็ก (CRITICAL RULE):**
+        - สำหรับช่อง "ชื่อหน่วยรับตรวจ (entity)" คุณต้อง **"คัดลอก (Copy & Paste)"** คำที่ปรากฏในเอกสารมาใส่ตรงๆ เท่านั้น! 
+        - ห้ามเดาคำ ห้ามแก้คำผิด ห้ามแก้ตัวสะกดเด็ดขาด (แม้ว่าคำนั้นจะพิมพ์ผิด เช่น "โรวพยาบาล" ก็ต้องตอบว่า "โรวพยาบาล")
         
         ให้ดึงข้อมูลดังต่อไปนี้ออกมา (ถ้าไม่พบให้ใส่ null):
         1. **ชื่อหน่วยรับตรวจ (Entity):** ต้องเป็นชื่อหน่วยงานที่ชัดเจน (เช่น "เทศบาลตำบล ก.", "โรงเรียนวัด...", "กรมทางหลวง") 
@@ -139,7 +168,7 @@ class InitialReviewAgents:
         """
         return self._call_typhoon(system_prompt, text)
 
-    # --- AGENT 3: criteria 6 (Specific Person Check) ---
+    # --- AGENT 4: criteria 6 (Specific Person Check) ---
     def agent_criteria6_complainant(self, text):
         system_prompt = """
         คุณคือ 'นายทะเบียน' หน้าที่คือตรวจสอบรายชื่อบุคคลในเอกสาร
@@ -155,7 +184,7 @@ class InitialReviewAgents:
         """
         return self._call_typhoon(system_prompt, text)
     
-    # --- AGENT 4: criteria 8 (Other Independent Organizations) --- 
+    # --- AGENT 5: criteria 8 (Other Independent Organizations) --- 
     def agent_criteria8_other_authority(self, text, criteria2_result=None):
         context_instruction = ""
         

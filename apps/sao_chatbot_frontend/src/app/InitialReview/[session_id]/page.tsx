@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { getReviewSummary, ReviewSummaryData } from "../../../libs/InitialReview/getSummaray";
+import { getReviewSummary, ReviewSummaryData } from "../../../libs/initialReview/getSummaray";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Print CSS
@@ -76,6 +76,7 @@ interface FormState {
   c8_false: boolean;
   c8_false_reason: string;
   c8_other: boolean;
+  c8_laws: boolean[];
   conclusion_accept: boolean;
   conclusion_accept_topic: string;
   conclusion_reject: boolean;
@@ -105,7 +106,7 @@ function buildFormState(s: ReviewSummaryData): FormState {
     c6: s.criteria_6 ?? [null, null, null],
     c7_no, c7_yes,
     c7_reason: c7_yes ? ((s.criteria_7 as Record<string,string>)["false"] ?? "") : "",
-    c8_true, c8_false, c8_other: false,
+    c8_true, c8_false, c8_other: false, c8_laws: [false, false, false, false],
     c8_true_reason:  c8_true  ? ((s.criteria_8 as Record<string,string>)["true"]  ?? "") : "",
     c8_false_reason: c8_false ? ((s.criteria_8 as Record<string,string>)["false"] ?? "") : "",
     conclusion_accept: false, conclusion_accept_topic: "",
@@ -259,6 +260,8 @@ export default function ReviewFormPage() {
     setForm(p => { if (!p) return p; const c4=[...p.c4]; c4[i]=v; return {...p,c4}; });
   const setC6 = (i: number, v: boolean | null) =>
     setForm(p => { if (!p) return p; const c6=[...p.c6]; c6[i]=v; return {...p,c6}; });
+  const setC8Law = (i: number, v: boolean) =>
+    setForm(p => { if (!p) return p; const c8_laws=[...p.c8_laws]; c8_laws[i]=v; return {...p,c8_laws}; });
   // toggle: clicking checked option deselects it
   const tog = (cur: boolean | null, target: boolean): boolean | null =>
     cur === target ? null : target;
@@ -471,14 +474,16 @@ export default function ReviewFormPage() {
             </Ck>
           </div>
 
-          {/* sub-laws indented */}
+          {/* sub-laws indented — tickable */}
           <div style={{ paddingLeft: 24, display:"flex", flexDirection:"column", gap:3 }}>
             {[
               "ตามกฎหมายว่าด้วยความผิดเกี่ยวกับการเสนอราคาต่อหน่วยงานของรัฐ",
               "ตามกฎหมายคณะกรรมการการเลือกตั้ง",
               "ตามกฎหมายผู้ตรวจการแผ่นดิน",
               "ตามกฎหมายคณะกรรมการสิทธิมนุษยชนแห่งชาติ",
-            ].map(l => <Ck key={l} v={false} on={()=>{}}>{l}</Ck>)}
+            ].map((l, i) => (
+              <Ck key={l} v={form.c8_laws[i]} on={v => setC8Law(i, v)}>{l}</Ck>
+            ))}
           </div>
 
           {/* ════════════════════════════════════════

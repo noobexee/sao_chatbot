@@ -1,6 +1,4 @@
 from collections import defaultdict
-import uuid
-import io
 import os
 import shutil
 import asyncio
@@ -11,14 +9,16 @@ import json
 from src.app.InitialReview.InitialReviewSchemas import ReviewSummary
 from src.db.repositories.InitialReview_repository import InitialReviewRepository
 from src.app.llm import InitialReview_agents
+from src.app.InitialReview.InitialReview_matcher import agency_matcher
+
 
 from src.app.llm.ocr import TyphoonOCRLoader
 
-class InitialReviewService:
 
+class InitialReviewService:
     def __init__(self):
         self.repo = InitialReviewRepository()
-    
+
     async def _extract_text_from_file(self, file: UploadFile) -> str:
         temp_path = None
         try:
@@ -32,9 +32,9 @@ class InitialReviewService:
 
             loader = TyphoonOCRLoader(file_path=temp_path)
             documents = loader.load()
-            extracted_text = "\n\n".join([doc.page_content for doc in documents])
-            
-            return extracted_text
+            raw_text = "\n\n".join([doc.page_content for doc in documents])
+
+            return raw_text
         finally:
             if temp_path and os.path.exists(temp_path):
                 os.remove(temp_path)
@@ -48,24 +48,93 @@ class InitialReviewService:
             raise e
 
     async def analyze_document_logic(self, file: UploadFile) -> dict:
-        """
-        วิเคราะห์เอกสารด้วย AI ครบทุกข้อพร้อมกัน (Parallel Execution)
-        *หมายเหตุ: session_id จะถูกสร้างและแนบเข้ามาใน Controller*
-        """
         try:
             extracted_text = await self._extract_text_from_file(file)
             print(f"Extracted {len(extracted_text)} chars. Start AI Analysis...")
-            
-            task_c2 = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria2_sao_authority, extracted_text)
-            task_c4 = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria4_sufficiency, extracted_text)
-            task_c6 = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria6_complainant, extracted_text)
-            task_c8 = asyncio.to_thread(InitialReview_agents.InitialReview_agents.agent_criteria8_other_authority, extracted_text)
 
-            res_c2, res_c4, res_c6, res_c8 = await asyncio.gather(task_c2, task_c4, task_c6, task_c8)
+            task_c2 = asyncio.to_thread(
+                InitialReview_agents.InitialReview_agents.agent_criteria2_sao_authority,
+                extracted_text
+            )
+            task_c4 = asyncio.to_thread(
+                InitialReview_agents.InitialReview_agents.agent_criteria4_sufficiency,
+                extracted_text
+            )
+            task_c6 = asyncio.to_thread(
+                InitialReview_agents.InitialReview_agents.agent_criteria6_complainant,
+                extracted_text
+            )
+            task_c8 = asyncio.to_thread(
+                InitialReview_agents.InitialReview_agents.agent_criteria8_other_authority,
+                extracted_text
+            )
+
+            res_c2, res_c4, res_c6, res_c8 = await asyncio.gather(
+                task_c2, task_c4, task_c6, task_c8
+            )
+
+            res_c1 = {
+                "status": "fail",
+                "title": "หน่วยรับตรวจ",
+                "data": None,
+                "reason": "ไม่พบข้อมูลหน่วยรับตรวจ",
+                "match_type": "None"
+            }
+
+            extracted_entity = None
+            print(f"res_c4 from AI: {res_c4}")
+            if res_c4 and "details" in res_c4 and "entity" in res_c4["details"]:
+                entity_field = res_c4["details"]["entity"]
+                print(f"Raw entity field from criteria 4: {entity_field}")
+                if isinstance(entity_field, dict):
+                    extracted_entity = entity_field.get("value")
+                    print(f"Extracted entity from criteria 4 details: {extracted_entity}")
+                else:
+                    extracted_entity = entity_field
+
+            if extracted_entity and getattr(agency_matcher, "is_ready", False):
+                matcher_result = agency_matcher.search_agency(extracted_entity)
+
+                if matcher_result.get("status") == "pending_llm":
+                    candidates = matcher_result.get("candidates", [])
+                    print(
+                        f" C1 LLM Judge Triggered! Entity: '{extracted_entity}', Candidates (search_keys): {candidates}"
+                    )
+
+                    judge_res = await asyncio.to_thread(
+                        InitialReview_agents.InitialReview_agents.agent_criteria1_judge,
+                        extracted_entity,
+                        candidates,
+                        extracted_text
+                    )
+
+                    if judge_res and judge_res.get("selected_candidate") != "Not Found":
+                        selected_search_key = judge_res.get("selected_candidate")
+
+                        db_result = agency_matcher.get_agency_by_search_key(
+                            selected_search_key
+                        )
+
+                        if db_result["status"] == "success":
+                            res_c1 = db_result
+                            res_c1["reason"] = judge_res.get("reason", "ตัดสินโดย LLM")
+                        else:
+                            res_c1["status"] = "fail"
+                            res_c1["match_type"] = "Not Found"
+                            res_c1["reason"] = "AI เลือกว่าตรง แต่ไม่พบข้อมูลในฐานข้อมูล"
+                    else:
+                        res_c1["status"] = "fail"
+                        res_c1["match_type"] = "Not Found"
+                        res_c1["reason"] = judge_res.get(
+                            "reason", "AI วิเคราะห์แล้วไม่ตรงกับฐานข้อมูล"
+                        )
+                else:
+                    res_c1 = matcher_result
 
             return {
                 "status": "success",
                 "data": {
+                    "criteria1": res_c1,
                     "criteria2": self._format_authority_response(res_c2, 2),
                     "criteria4": self._format_ai_response(res_c4, "criteria4"),
                     "criteria6": self._format_ai_response(res_c6, "criteria6"),
@@ -73,49 +142,43 @@ class InitialReviewService:
                     "raw_text": extracted_text[:200]
                 }
             }
+
         except Exception as e:
             print(f"Analyze Error: {e}")
             raise e
 
     def save_criteria_log(self, user_id: str, session_id: str, criteria_id: int, ai_result: dict, feedback: str = None) -> bool:
-        """ส่งข้อมูลไปบันทึกลง Database ผ่าน Repository"""
         return self.repo.save_criteria_log(user_id, session_id, criteria_id, ai_result, feedback)
 
-    def get_all_sessions(self, user_id: str):
-        """ดึงประวัติ Session ทั้งหมดของ User"""
-        return self.repo.get_all_sessions(user_id)
+    def get_user_sessions(self, user_id: str):
+        return self.repo.get_user_sessions(user_id)
 
     def get_review_by_session(self, user_id: str, session_id: str):
-        """ดึงรายละเอียดการตรวจของ 1 Session"""
         return self.repo.get_review_by_session(user_id, session_id)
 
     def delete_session(self, user_id: str, session_id: str) -> bool:
-        """ลบประวัติการตรวจสอบ"""
         return self.repo.delete_session(user_id, session_id)
 
     def _format_ai_response(self, result: dict, criteria_type: str) -> dict:
-        """จัด Format สำหรับ Criteria ทั่วไป (ข้อ 4 และ 6)"""
         if not result:
             return {"status": "fail", "title": "AI Error", "details": {}, "people": []}
-        
+
         if criteria_type == "criteria6":
             people_list = result.get("people", [])
-            has_complainant = any(p.get('role', '') == 'ผู้ร้องเรียน' for p in people_list)
+            has_complainant = any(p.get("role", "") == "ผู้ร้องเรียน" for p in people_list)
             return {
-                "status": "success" if has_complainant else "fail", 
-                "title": "ผู้ร้องเรียน", 
+                "status": "success" if has_complainant else "fail",
+                "title": "ผู้ร้องเรียน",
                 "people": people_list
             }
-        
+
         return result
 
     def _format_authority_response(self, result: dict, criteria_id: int) -> dict:
-        """จัด Format สำหรับ Criteria 2 และ 8 (รองรับระบบ HITL)"""
         if not result:
-             return {"status": "fail", "title": "AI Error", "result": "-", "reason": "AI Error"}
+            return {"status": "fail", "title": "AI Error", "result": "-", "reason": "AI Error"}
 
         title = "อำนาจหน้าที่ สตง." if criteria_id == 2 else "อำนาจองค์กรอิสระอื่น"
-        
         return {
             "status": result.get("status", "neutral"),
             "title": title,
@@ -125,20 +188,6 @@ class InitialReviewService:
             "organization": result.get("organization", None)
         }
 
-    def get_InitialReview_file_content(self, InitialReview_id: str):
-        info = self.repo.get_InitialReview_summary(InitialReview_id)
-        if not info:
-             raise ValueError("InitialReview ID not found")
-        
-        file_content = self.repo.get_InitialReview_file_content(InitialReview_id)
-        if not file_content:
-            raise FileNotFoundError("File content missing")
-
-        file_name = info.get("file_name", "doc.pdf")
-        media_type = "application/pdf" if file_name.lower().endswith(".pdf") else "image/jpeg"
-        
-        return io.BytesIO(file_content), media_type
-    
     def get_InitialReview_summary(self, user_id: str, InitialReview_id: str):
         rows = self.repo.get_review_by_session(
             user_id=user_id,
@@ -158,11 +207,27 @@ class InitialReviewService:
 
         def pick(row):
             return row[2] if row[5] else row[4]
-        
+
         def has_text(value):
             return value is not None and str(value).strip() != ""
 
         summary = ReviewSummary()
+
+        # -------- OCR (Criteria 0) --------
+        if 0 in criteria_map:
+            row = criteria_map[0].get("ocr_text")
+            if row:
+                ocr_text = pick(row)
+                summary.OCR_text = ocr_text
+
+        # -------- Criteria 1 --------
+        if 1 in criteria_map:
+            result_row = criteria_map[1].get("raw_result")
+            print(f"Criteria 1 Row: {result_row}")
+
+            if result_row:
+                value = pick(result_row)
+                summary.criteria_1 = (value == "เป็น")
 
         # -------- Criteria 2 --------
         if 2 in criteria_map:
@@ -177,7 +242,7 @@ class InitialReviewService:
             row = criteria_map[3].get("raw_result")
 
             if row:
-                value = row[4]  # always user_value
+                value = row[4]
 
                 if value == "ไม่เกิน":
                     summary.criteria_3 = True
@@ -208,7 +273,7 @@ class InitialReviewService:
             row = criteria_map[5].get("raw_result")
 
             if row:
-                value = row[4]  # always user_value
+                value = row[4]
                 summary.criteria_5 = (value == "ไม่เคยแจ้ง")
 
         # -------- Criteria 6 --------
@@ -233,13 +298,12 @@ class InitialReviewService:
                     bool(has_witness)
                 ]
 
-
         # -------- Criteria 7 --------
         if 7 in criteria_map:
             row = criteria_map[7].get("raw_result")
 
             if row:
-                value = row[4]  # always user_value
+                value = row[4]
 
                 if value == "เป็น":
                     summary.criteria_7 = {False: None}
@@ -256,6 +320,8 @@ class InitialReviewService:
                 reason = pick(reason_row) if reason_row else ""
 
                 summary.criteria_8 = {result: reason}
-        return summary
 
-        
+        return summary
+    
+
+initial_review = InitialReviewService()

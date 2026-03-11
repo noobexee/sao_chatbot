@@ -15,7 +15,6 @@ class DocumentUpdater:
         self.embedder = global_embedder
 
     # ---------- Create ----------
-
     def new_document(
         self,
         *,
@@ -26,7 +25,7 @@ class DocumentUpdater:
         
         announce_date = str(doc_data.announce_date)
         effective_date = str(doc_data.effective_date)
-
+        
         chunks = chunk_by_clause(
             text=text,
             law_name=doc_data.title,
@@ -69,7 +68,6 @@ class DocumentUpdater:
         return len(chunks)
 
     # ---------- Merge / Snapshot ----------
-
     def merge_documents(
         self,
         *,

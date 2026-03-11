@@ -3,9 +3,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
-import getUserHistory from "@/libs/getUserHistory";
-import deleteChatHistory from "@/libs/deleteChatHistory";
-import { updateSession } from "@/libs/updateUserSession";
+import getUserHistory from "@/libs/chatbot/getUserHistory";
+import deleteChatHistory from "@/libs/chatbot/deleteChatHistory";
+import { updateSession } from "@/libs/chatbot/updateUserSession";
 
 interface Session {
   session_id: string;
