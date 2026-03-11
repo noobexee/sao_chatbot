@@ -228,6 +228,7 @@ class DocumentManager:
             new_doc_id=new_doc_id,
             text=merged_text,
             expire_date=meta.effective_date + timedelta(days=1),
+            amend_doc_id=amend_doc_id
         )
         self.repo.mark_done(base_doc_id)
 
