@@ -43,7 +43,7 @@ def import_agencies():
         print("Error: SQL_DATABASE_URL missing from .env")
         return
 
-    CSV_PATH = "agency.csv"
+    CSV_PATH = "storage/agency.csv"
 
     try:
         conn = psycopg2.connect(db_url)

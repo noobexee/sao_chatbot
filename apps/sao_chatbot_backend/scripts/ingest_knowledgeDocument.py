@@ -55,7 +55,7 @@ def import_documents():
         print("Error: SQL_DATABASE_URL is missing from .env")
         return
 
-    CSV_PATH = "knowledgebase.csv"
+    CSV_PATH = "storage/knowledgebase.csv"
     FILE_BASE_DIR = "storage/files"
 
     updater = DocumentUpdater()
