@@ -38,18 +38,24 @@ const PRINT_CSS = `
     color: #000 !important;
   }
 
-  /* underline inputs: hide placeholder, show only text + underline */
-  #print-area input[type=text],
-  #print-area textarea {
-    border: none !important;
-    border-bottom: 0.5pt solid #000 !important;
-    background: transparent !important;
+  /* Hide all editable textareas — browsers always clip them when printing */
+  #print-area textarea { display: none !important; }
+
+  /* Show the print-mirror div instead */
+  #print-area .pmirror {
+    display: block !important;
+    font-family: 'Sarabun', sans-serif !important;
     font-size: 9pt !important;
-    padding: 0 2pt !important;
-    outline: none !important;
-    box-shadow: none !important;
-    resize: none !important;
-    -webkit-print-color-adjust: exact;
+    color: #000 !important;
+    line-height: 1.6 !important;
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: none !important;
+    border: none !important;
+    min-height: 1.6em !important;
   }
 
   #print-area .page-break { page-break-before: always !important; display: block !important; }
@@ -201,23 +207,43 @@ function Row({ label, checks, indent = 0 }: {
   );
 }
 
-/** Inline text input — underlined, no box */
+/** Inline text — textarea on screen, plain div on print */
 function TIn({ v, on, w = "100%", ph = "" }: {
   v: string; on: (x: string) => void; w?: string | number; ph?: string;
 }) {
+  const autoSize = (el: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  };
   return (
-    <input type="text" value={v} onChange={e => on(e.target.value)}
-      placeholder={ph} style={uSt(w)} />
+    <div style={{ display: "block", width: w }}>
+      <textarea value={v}
+        onChange={e => { on(e.target.value); autoSize(e.target); }}
+        placeholder={ph} rows={1} ref={autoSize}
+        style={{ ...uSt(w), resize: "none", overflow: "hidden", minHeight: 28 }} />
+      <div className="pmirror" style={{ display: "none" }}>{v || " "}</div>
+    </div>
   );
 }
 
-/** Multi-line underlined block */
+/** Multi-line block — textarea on screen, plain div on print */
 function TBox({ v, on, rows = 3, ph = "" }: {
   v: string; on: (x: string) => void; rows?: number; ph?: string;
 }) {
+  const autoSize = (el: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  };
   return (
-    <textarea value={v} onChange={e => on(e.target.value)}
-      rows={rows} placeholder={ph} style={{ ...uSt("100%"), resize: "vertical" }} />
+    <div style={{ display: "block", width: "100%" }}>
+      <textarea value={v}
+        onChange={e => { on(e.target.value); autoSize(e.target); }}
+        rows={rows} placeholder={ph} ref={autoSize}
+        style={{ ...uSt("100%"), resize: "none", overflow: "hidden" }} />
+      <div className="pmirror" style={{ display: "none" }}>{v || " "}</div>
+    </div>
   );
 }
 
@@ -463,7 +489,7 @@ export default function ReviewFormPage() {
               <span>ประเด็นร้องเรียนบางประเด็นอยู่ในหน้าที่และอำนาจตรวจสอบของ ผตง. และมีบางประเด็นอยู่ในหน้าที่และอำนาจดำเนินการขององค์กรอิสระอื่น (ระบุ)</span>
             </Ck>
             <div style={{ paddingLeft: 24, marginTop: 3 }}>
-              <TIn v={form.c8_false_reason} on={v => set("c8_false_reason",v)} ph="ระบุชื่อองค์กร..." />
+              <TBox v={form.c8_false_reason} on={v => set("c8_false_reason",v)} ph="ระบุชื่อองค์กร..." />
             </div>
           </div>
 
