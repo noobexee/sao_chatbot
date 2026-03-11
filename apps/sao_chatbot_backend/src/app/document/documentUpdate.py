@@ -74,14 +74,15 @@ class DocumentUpdater:
         doc_data: DocumentMeta,
         old_doc_id: str,
         new_doc_id: str,
+        amend_doc_id: str,
         text: str,
         expire_date: date,
-    ) -> int:
         
+    ) -> int:
         announce_date = str(doc_data.announce_date)
         effective_date = str(doc_data.effective_date)
         expire_date = str(expire_date)
-
+        delete_document_pipeline(amend_doc_id)
         update_document_expiry_pipeline(old_doc_id, expire_date)
 
         chunks = chunk_by_clause(
