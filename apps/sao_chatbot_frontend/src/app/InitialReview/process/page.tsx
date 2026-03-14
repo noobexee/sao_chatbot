@@ -748,7 +748,6 @@ function InitialReviewProcessContent() {
                                         <div className={`p-4 rounded-md mt-2 shadow-sm border transition-colors ${criteria.ocrResult.isVerified ? 'bg-green-50 border-green-200' : 'bg-white border-blue-200'}`}>
                                             <div className="text-xs font-semibold mb-3 border-b pb-2 text-gray-700">ข้อมูลหน่วยรับตรวจที่ยืนยันแล้ว</div>
                                             <div className="grid grid-cols-1 gap-2 text-xs text-gray-700">
-                                                <div className="flex justify-between"><span className="font-semibold w-1/3">รหัสหน่วยงาน:</span> <span className="w-2/3">{criteria.ocrResult.details.data.selected_hierarchy.agency_id}</span></div>
                                                 <div className="flex justify-between"><span className="font-semibold w-1/3">ชื่อหน่วยงาน:</span> <span className="w-2/3">{criteria.ocrResult.details.data.agency_name}</span></div>
                                                 <div className="flex justify-between"><span className="font-semibold w-1/3">ชื่อสังกัด:</span> <span className="w-2/3">{criteria.ocrResult.details.data.selected_hierarchy.department}</span></div>
                                                 <div className="flex justify-between"><span className="font-semibold w-1/3">ชื่อกระทรวง:</span> <span className="w-2/3">{criteria.ocrResult.details.data.selected_hierarchy.ministry}</span></div>
@@ -781,13 +780,9 @@ function InitialReviewProcessContent() {
                                                                     onChange={() => handleC1HierarchySelect(criteria.id, h)}
                                                                 />
                                                                 <div className="text-sm flex-1">
-                                                                    <span className="text-xs font-normal text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded ml-2">รหัส: {h.agency_id}</span>
                                                                     <div className="font-bold text-gray-800">{h.department} 
-                                                                        <span className="text-xs font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded ml-1">รหัส: {h.department_id}</span>
                                                                     </div>
-                                                                    <div className="text-xs text-gray-500 mt-1">{h.ministry} 
-                                                                        
-                                                                        <span className="text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded ml-1">รหัส: {h.ministry_id}</span>
+                                                                    <div className="text-xs text-gray-500 mt-1">{h.ministry}  
                                                                     </div>
                                                                 </div>
                                                             </label>
