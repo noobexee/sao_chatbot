@@ -3,14 +3,12 @@ import logging
 from typing import Any
 
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.output_parsers import StrOutputParser
 
 from src.app.chatbot.router import get_legal_sub_route
 from src.app.chatbot.utils.references import map_references_to_document_ids
 from src.app.chatbot.utils.formatters import format_regulation_context
 from src.app.chatbot.handlers.base import BaseHandler
 from src.app.chatbot.prompts.legal_query import build_prompt
-from src.app.chatbot.prompts.legal_routing import build_prompt as build_routing_prompt
 from src.app.chatbot.schemas import RAGResponse, LegalResponseSchema
 from src.app.chatbot.constants import (
     DEFAULT_RETRIEVAL_K,
@@ -36,7 +34,6 @@ class LegalRagHandler(BaseHandler):
     async def handle(self, query: str, history: list, llm: Any) -> RAGResponse:
         route = await get_legal_sub_route(query, history, llm)
         retrieved_docs = await self._retrieve(query, history, route)
-        print(retrieved_docs)
         history_str = self._format_history(history, window=HISTORY_WINDOW)
         context_str = format_regulation_context(retrieved_docs)
 

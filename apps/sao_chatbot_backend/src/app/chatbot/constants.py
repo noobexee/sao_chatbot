@@ -1,3 +1,4 @@
+import datetime
 from typing import Final
 
 #System main route
@@ -23,3 +24,22 @@ FUZZY_MATCH_THRESHOLD: Final = 65
 DEFAULT_RETRIEVAL_K: Final = 3
 HISTORY_WINDOW: Final = 5
 LLM_TIMEOUT_SECONDS: Final = 30.0
+
+#Retrieval
+DEFAULT_RETRIEVE_K = 3
+RELATED_DOCS_K = 3
+FETCH_MULTIPLIER = 5
+
+#RRF score
+RRF_C: Final = 60   
+
+#File Path
+REGULATION_PATH = "storage/regulations"
+OTHERS_PATH = "storage/others"
+MASTER_MAP_PATH = "storage/master_map.json"
+SOURCE_MAP_PATH = "storage/source_map.json"
+
+# Date filtering sentinels
+DATE_FORMAT = "%Y-%m-%d"
+DATE_MIN = datetime.datetime(1000, 1, 1)
+DATE_MAX = datetime.datetime(9999, 12, 31)

@@ -15,6 +15,7 @@ from src.app.chatbot.constants import (
     LEGAL_ROUTE_GUIDELINE, 
     LEGAL_ROUTE_STANDARD,
     LEGAL_ROUTE_REGULATION,
+    LEGAL_ROUTE_GENERAL
 )
 
 logger = logging.getLogger(__name__)
@@ -112,4 +113,4 @@ def _parse_legal_route(decision: str) -> str:
     if LEGAL_ROUTE_ORDER in decision:      return LEGAL_ROUTE_ORDER
     if LEGAL_ROUTE_GUIDELINE in decision:  return LEGAL_ROUTE_GUIDELINE
     if LEGAL_ROUTE_REGULATION in decision: return LEGAL_ROUTE_REGULATION
-    return "GENERAL"
+    return LEGAL_ROUTE_GENERAL

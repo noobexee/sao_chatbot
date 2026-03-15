@@ -1,6 +1,6 @@
 import logging
 from typing import Any
-from src.app.chatbot.retriever import Retriever
+from src.app.chatbot.retriever.retriever import Retriever
 from src.app.chatbot.router import get_top_level_route
 from src.app.chatbot.schemas import RAGResponse
 from src.app.llm.llm_manager import get_llm
