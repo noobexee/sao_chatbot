@@ -1,6 +1,19 @@
 import re
-from typing import List, Dict
+from typing import List, Dict, Any
 
+def format_regulation_context(retrieved_docs: list[dict[str, Any]]) -> str:
+    """
+    Converts retrieved documents into a formatted string
+    for injection into the legal RAG prompt.
+    """
+    if not retrieved_docs:
+        return "No relevant documents found."
+
+    sections = []
+    for doc in retrieved_docs:
+        sections.append(doc.get("content", ""))
+
+    return "\n\n".join(sections)
 
 def thai_to_arabic(text: str) -> str:
     """Converts Thai numerals to Arabic numerals for consistent mapping."""
