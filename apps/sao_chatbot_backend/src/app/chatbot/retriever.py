@@ -13,7 +13,6 @@ from src.db.vector_store.vector_store import load_faiss_index
 from src.app.chatbot.utils.formatters import simplify_thai_text, thai_to_arabic, normalize_regulation_id
 import asyncio
 from threading import Lock
-from flashrank import Ranker, RerankRequest 
 
 REGULATION_PATH = "storage/regulations"
 OTHERS_PATH = "storage/others"
@@ -522,9 +521,9 @@ class Retriever:
             logger.error(f"Top-level retrieve_regulation failed: {e}")
             return []
         
-    async def retrieve_general(self, query: str, k: int = 3, history: list = [], search_date: str = None):
+    async def retrieve_general(self, user_query: str, k: int = 3, history: list = [], search_date: str = None):
         try:
-            effective_query = await self._rewrite_query_with_history(query, history)
+            effective_query = await self._rewrite_query_with_history(user_query, history)
         
             reg_task = self.hybrid_search_regulation(effective_query, k=k*3, search_date=search_date)
             other_task = self.hybrid_search_other(effective_query, k=k*3, search_date=search_date)
