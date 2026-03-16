@@ -8,7 +8,7 @@ import json
 
 from src.app.InitialReview.InitialReviewSchemas import ReviewSummary
 from src.db.repositories.InitialReview_repository import InitialReviewRepository
-from src.app.llm import InitialReview_agents
+from src.app.InitialReview import InitialReview_agents
 from src.app.InitialReview.InitialReview_matcher import agency_matcher
 
 
@@ -53,19 +53,19 @@ class InitialReviewService:
             print(f"Extracted {len(extracted_text)} chars. Start AI Analysis...")
 
             task_c2 = asyncio.to_thread(
-                InitialReview_agents.InitialReview_agents.agent_criteria2_sao_authority,
+                InitialReview_agents.agent_criteria2_sao_authority,
                 extracted_text
             )
             task_c4 = asyncio.to_thread(
-                InitialReview_agents.InitialReview_agents.agent_criteria4_sufficiency,
+                InitialReview_agents.agent_criteria4_sufficiency,
                 extracted_text
             )
             task_c6 = asyncio.to_thread(
-                InitialReview_agents.InitialReview_agents.agent_criteria6_complainant,
+                InitialReview_agents.agent_criteria6_complainant,
                 extracted_text
             )
             task_c8 = asyncio.to_thread(
-                InitialReview_agents.InitialReview_agents.agent_criteria8_other_authority,
+                InitialReview_agents.agent_criteria8_other_authority,
                 extracted_text
             )
 
@@ -102,7 +102,7 @@ class InitialReviewService:
                     )
 
                     judge_res = await asyncio.to_thread(
-                        InitialReview_agents.InitialReview_agents.agent_criteria1_judge,
+                        InitialReview_agents.agent_criteria1_judge,
                         extracted_entity,
                         candidates,
                         extracted_text

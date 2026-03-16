@@ -137,7 +137,7 @@ export default function InitialReviewMainPage() {
 
                                         <td className="p-4 text-sm text-gray-700">
                                             <span className="inline-flex items-center justify-center bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold text-xs mr-2">
-                                                {session.criteria_count}
+                                                {session.criteria_count-1}
                                             </span>
                                             รายการ
                                         </td>

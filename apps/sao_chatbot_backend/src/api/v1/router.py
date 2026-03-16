@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from src.api.v1.chatbot.router import chatbot_router
 from src.api.v1.merger.router import merger_router
-from src.api.v1.initialReview.router import review_router
+from src.api.v1.initialreview.router import review_router
 from src.api.v1.auth.router import auth_router
 
 api_router = APIRouter()

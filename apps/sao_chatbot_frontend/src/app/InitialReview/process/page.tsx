@@ -13,7 +13,7 @@ type criteriaStatus = "neutral" | "pending" | "success" | "fail";
 type FeedbackType = "up" | "down" | null;
 type ViewMode = "pdf" | "text";
 
-interface Person { name: string; role: string; }
+interface Person { name: string; role: string; id_card?: string; }
 
 interface FieldData {
   value: string | null;      
@@ -322,7 +322,7 @@ function InitialReviewProcessContent() {
     }));
   };
 
-  const handleUpdatePerson = (idx: number, field: 'name' | 'role', value: string) => {
+  const handleUpdatePerson = (idx: number, field: 'name' | 'role' | 'id_card', value: string) => {
       setCriterias(prev => prev.map(c => {
           if (c.id === 6 && c.ocrResult?.people) {
               const newPeople = [...c.ocrResult.people];
@@ -347,7 +347,7 @@ function InitialReviewProcessContent() {
       setCriterias(prev => prev.map(c => {
           if (c.id === 6) {
               const currentPeople = c.ocrResult?.people || [];
-              const newPeople = [...currentPeople, { name: "", role: "ผู้ร้องเรียน" }];
+              const newPeople = [...currentPeople, { name: "", role: "ผู้ร้องเรียน", id_card: "" }];
               return { ...c, status: 'success', ocrResult: { ...(c.ocrResult as any), status: 'success', people: newPeople } };
           }
           return c;
@@ -853,18 +853,27 @@ function InitialReviewProcessContent() {
                                                 <div className="text-sm text-gray-400 text-center py-4">ไม่พบรายชื่อบุคคล</div>
                                             ) : (
                                                 criteria.ocrResult.people.map((person, idx) => (
-                                                    <div key={idx} className="flex gap-2 items-center bg-gray-50 p-2 rounded border border-gray-100">
+                                                    <div key={idx} className="flex gap-2 items-center bg-gray-50 p-2 rounded border border-gray-100 flex-wrap">
                                                         <input 
                                                             type="text" 
                                                             value={person.name} 
                                                             onChange={(e) => handleUpdatePerson(idx, 'name', e.target.value)}
-                                                            className="flex-1 text-sm border border-gray-300 rounded px-2 py-1"
+                                                            className="flex-[2] text-sm border border-gray-300 rounded px-2 py-1 min-w-[120px]"
                                                             placeholder="ชื่อ-นามสกุล"
+                                                        />
+                                                        {/* 🟢 เพิ่มช่องสำหรับ เลขบัตรประชาชน */}
+                                                        <input 
+                                                            type="text" 
+                                                            value={person.id_card || ''} 
+                                                            onChange={(e) => handleUpdatePerson(idx, 'id_card', e.target.value)}
+                                                            className="flex-[1.5] text-sm border border-gray-300 rounded px-2 py-1 min-w-[120px]"
+                                                            placeholder="เลขบัตร ปชช."
+                                                            maxLength={13}
                                                         />
                                                         <select 
                                                             value={person.role} 
                                                             onChange={(e) => handleUpdatePerson(idx, 'role', e.target.value)}
-                                                            className="text-sm border border-gray-300 rounded px-2 py-1 bg-white"
+                                                            className="flex-1 text-sm border border-gray-300 rounded px-2 py-1 bg-white min-w-[100px]"
                                                         >
                                                             {ROLE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                                         </select>
