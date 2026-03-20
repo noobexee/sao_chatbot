@@ -62,8 +62,6 @@ class DocumentManager:
         self.updater = DocumentUpdater()
         self.llm = GeminiLLM()
 
-    # ---------- Read ----------
-
     def list_documents(self):
         return self.repo.list_documents()
     
@@ -78,6 +76,15 @@ class DocumentManager:
 
     def get_metadata(self, doc_id: str) -> DocumentMeta:
         return self.repo.get_metadata(doc_id)
+    
+    def delete_document(self, doc_id: str):
+        self.repo.delete_document(doc_id)
+        return self.updater.delete_document(doc_id)
+
+    def get_related_doc(self, doc_id: str) -> Optional[List[str]]:
+        list = self.repo.get_related_doc(doc_id)
+        return list
+
 
     # ---------- Create ----------
     def create_document(
@@ -136,7 +143,6 @@ class DocumentManager:
         }
 
     # ---------- OCR ----------
-
     def handle_ocr(self, *, doc_id: str, pdf_bytes: bytes):
 
         run_ocr_and_update_db(doc_id, pdf_bytes)
@@ -151,7 +157,6 @@ class DocumentManager:
         )
 
     # ---------- Update ----------
-
     def edit_document(
         self,
         *,
@@ -233,15 +238,5 @@ class DocumentManager:
         self.repo.mark_done(base_doc_id)
 
         return {"id": new_doc_id}
-
-    # ---------- Delete ----------
-
-    def delete_document(self, doc_id: str):
-        self.repo.delete_document(doc_id)
-        return self.updater.delete_document(doc_id)
-
-    def get_related_doc(self, doc_id: str) -> Optional[List[str]]:
-        list = self.repo.get_related_doc(doc_id)
-        return list
 
 manager = DocumentManager()

@@ -320,18 +320,17 @@ class DocumentRepository:
             if conn:
                 conn.close()
 
-    # MERGE + SNAPSHOT
     def merge_documents(
         self,
         *,
         payload: MergeRequest,
         merged_text: str,
     ) -> str:
+
         conn = get_db_connection()
         try:
             cur = conn.cursor()
 
-            # invalidate amend doc
             cur.execute(
                 """
                 UPDATE documents
@@ -342,6 +341,8 @@ class DocumentRepository:
             )
 
             new_doc_id = str(uuid.uuid4())
+
+            is_snapshot = payload.merge_mode != "replace_all"
 
             if payload.merge_mode == "replace_all":
                 query = """
@@ -413,12 +414,162 @@ class DocumentRepository:
                 (new_doc_id, merged_text, payload.amend_doc_id),
             )
 
+            if is_snapshot:
+
+                def expand_sources(doc_id: str):
+
+                    cur.execute(
+                        """
+                        SELECT is_snapshot, version
+                        FROM documents
+                        WHERE id = %s
+                        """,
+                        (doc_id,),
+                    )
+
+                    row = cur.fetchone()
+                    if not row:
+                        raise ValueError("Document not found")
+
+                    is_snap, version = row
+
+                    # normal document
+                    if not is_snap:
+                        if version is None or version <= 0:
+                            raise ValueError("Invalid document version")
+                        return [(doc_id, version)]
+
+                    # snapshot → flatten
+                    cur.execute(
+                        """
+                        SELECT source_id
+                        FROM document_snapshot_versions
+                        WHERE snapshot_id = %s
+                        ORDER BY version_order
+                        """,
+                        (doc_id,),
+                    )
+
+                    source_ids = [r[0] for r in cur.fetchall()]
+                    if not source_ids:
+                        raise ValueError("Snapshot has no lineage")
+
+                    cur.execute(
+                        """
+                        SELECT id, version
+                        FROM documents
+                        WHERE id = ANY(%s)
+                        """,
+                        (source_ids,),
+                    )
+
+                    version_map = {r[0]: r[1] for r in cur.fetchall()}
+
+                    return [(sid, version_map[sid]) for sid in source_ids]
+
+                base_sources = expand_sources(payload.base_doc_id)
+                amend_sources = expand_sources(payload.amend_doc_id)
+
+                final_sources = base_sources + amend_sources
+
+                insert_rows = []
+                order = 1
+
+                for sid, ver in final_sources:
+                    insert_rows.append((new_doc_id, sid, order))
+                    order += 1
+
+                cur.executemany(
+                    """
+                    INSERT INTO document_snapshot_versions
+                    (snapshot_id, source_id, version_order)
+                    VALUES (%s, %s, %s)
+                    """,
+                    insert_rows,
+                )
+
             conn.commit()
             return new_doc_id
 
         except Exception:
             conn.rollback()
             raise
+        finally:
+            conn.close()
+
+    def _resolve_sources(self, cur, doc_id: str):
+
+        cur.execute(
+            """
+            SELECT is_snapshot, version
+            FROM documents
+            WHERE id = %s
+            """,
+            (doc_id,),
+        )
+
+        row = cur.fetchone()
+        if not row:
+            raise ValueError("Document not found")
+
+        is_snapshot, version = row
+
+        if not is_snapshot:
+            return [(doc_id, version)]
+
+        cur.execute(
+            """
+            SELECT source_id
+            FROM document_snapshot_versions
+            WHERE snapshot_id = %s
+            ORDER BY version_order
+            """,
+            (doc_id,),
+        )
+
+        source_ids = [r[0] for r in cur.fetchall()]
+
+        if not source_ids:
+            raise ValueError("Snapshot has no lineage")
+
+        cur.execute(
+            """
+            SELECT id, version
+            FROM documents
+            WHERE id = ANY(%s)
+            """,
+            (source_ids,),
+        )
+
+        version_map = {r[0]: r[1] for r in cur.fetchall()}
+
+        return [(sid, version_map[sid]) for sid in source_ids]
+
+    def get_snapshot_sources(self, snapshot_id: str):
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+
+            cur.execute(
+                """
+                SELECT source_id, version_order
+                FROM document_snapshot_versions
+                WHERE snapshot_id = %s
+                ORDER BY version_order
+                """,
+                (snapshot_id,),
+            )
+
+            rows = cur.fetchall()
+
+            return [
+                {
+                    "source_id": r[0],
+                    "order": r[1]
+                }
+                for r in rows
+            ]
+
         finally:
             conn.close()
 

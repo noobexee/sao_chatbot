@@ -30,6 +30,17 @@ CREATE TABLE IF NOT EXISTS documents (
     updated_at TIMESTAMP
 );
 
+CREATE TABLE document_snapshot_versions (
+    snapshot_id TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    version_order INTEGER NOT NULL,
+
+    PRIMARY KEY (snapshot_id, version_order),
+
+    FOREIGN KEY (snapshot_id) REFERENCES documents(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_id) REFERENCES documents(id)
+);
+
 CREATE TABLE IF NOT EXISTS document_files (
     id TEXT PRIMARY KEY,
     document_id TEXT NOT NULL,

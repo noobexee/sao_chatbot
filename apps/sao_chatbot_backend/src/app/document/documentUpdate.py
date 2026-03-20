@@ -1,6 +1,6 @@
 from datetime import date
 from src.app.utils.chunking import chunk_by_clause
-from src.app.utils.embedding import BGEEmbedder, global_embedder
+from src.app.utils.embedding import global_embedder
 from src.app.utils.preprocess_dataset import (
     delete_document_pipeline,
     index_single_json_file,
@@ -42,7 +42,6 @@ class DocumentUpdater:
         return len(chunks)
 
     # ---------- Edit ----------
-
     def edit_document(
         self,
         *,
@@ -102,7 +101,6 @@ class DocumentUpdater:
         return len(chunks)
 
     # ---------- Delete ----------
-
     def delete_document(self, document_id: str):
         delete_document_pipeline(document_id)
         return "done"
