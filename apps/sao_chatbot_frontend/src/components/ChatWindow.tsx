@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown"; 
@@ -26,19 +26,14 @@ interface ChatWindowProps {
 
 export default function ChatWindow({ initialMessages, sessionId }: ChatWindowProps) {
   
-  // Helper function to convert DB object format into our frontend Array format
   const formatMessages = (msgs: any[]): Message[] => {
     return msgs.map((msg) => {
       let parsedReferences: Reference[] = [];
 
-      // Check if references exist
       if (msg.references) {
-        // If it's already an array (from our active chat state), keep it
         if (Array.isArray(msg.references)) {
           parsedReferences = msg.references;
-        } 
-        // If it's an object (from the database history), convert it to an array
-        else if (typeof msg.references === "object") {
+        } else if (typeof msg.references === "object") {
           parsedReferences = Object.entries(msg.references).map(([key, value]) => ({
             name: key,
             doc_id: value as string,
@@ -55,11 +50,11 @@ export default function ChatWindow({ initialMessages, sessionId }: ChatWindowPro
     });
   };
 
-  // Initialize state with formatted messages
   const [messages, setMessages] = useState<Message[]>(() => formatMessages(initialMessages));
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -68,7 +63,6 @@ export default function ChatWindow({ initialMessages, sessionId }: ChatWindowPro
     }, 50);
   }, [messages, isLoading]);
 
-  // Update state with formatted messages when initialMessages change (like on refresh)
   useEffect(() => {
     setMessages(formatMessages(initialMessages));
   }, [initialMessages]);
@@ -82,12 +76,35 @@ export default function ChatWindow({ initialMessages, sessionId }: ChatWindowPro
     });
   };
 
+  // Auto-resize textarea as content grows
+  const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    const el = textareaRef.current;
+    if (el) {
+      el.style.height = "auto"; // reset to shrink when text is deleted
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  }, []);
+
+  // Enter → send, Shift+Enter → newline
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
   const handleSend = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!input.trim() || isLoading) return;
 
     const userText = input;
-    setInput(""); 
+    setInput("");
+
+    // Reset textarea height after clearing
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
 
     const newMessage: Message = {
       role: "user",
@@ -100,7 +117,6 @@ export default function ChatWindow({ initialMessages, sessionId }: ChatWindowPro
     try {
       const responseData = await sendMessage(sessionId, userText);
       
-      // Safely extract from 'data' wrapper if it exists, otherwise use directly
       const answerText = responseData.data ? responseData.data.answer : responseData.answer;
       const refObject = responseData.data ? responseData.data.ref : responseData.ref;
       
@@ -138,14 +154,13 @@ export default function ChatWindow({ initialMessages, sessionId }: ChatWindowPro
         <div className="mx-auto max-w-3xl space-y-6">
           
           {messages.length === 0 && (
-             <div className="text-center text-gray-400 mt-10">เริ่มการสนทนาใหม่กับ SAO Bot</div>
+            <div className="text-center text-gray-400 mt-10">เริ่มการสนทนาใหม่กับ SAO Bot</div>
           )}
 
           {messages.map((msg, idx) => {
             const isUser = msg.role === "user";
             return (
               <div key={idx} className="flex w-full gap-3 items-start">
-
                 <div className={`h-8 w-8 shrink-0 flex items-center justify-center rounded-full border border-gray-100 overflow-hidden ${isUser ? "bg-gray-200" : "bg-[#a83b3b] text-white"}`}>
                   {isUser ? (
                     <Image src="/user-placeholder.jpg" alt="User" width={32} height={32} className="object-cover" />
@@ -162,9 +177,9 @@ export default function ChatWindow({ initialMessages, sessionId }: ChatWindowPro
                   
                   <div className={`leading-relaxed text-gray-800 break-words ${!isUser ? "prose prose-sm max-w-none" : ""}`}>
                     {isUser ? (
-                       <p>{msg.content}</p>
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
                     ) : (
-                       <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
                     )}
                   </div>
 
@@ -189,7 +204,6 @@ export default function ChatWindow({ initialMessages, sessionId }: ChatWindowPro
                       </div>
                     </div>
                   )}
-
                 </div>
               </div>
             );
@@ -199,12 +213,12 @@ export default function ChatWindow({ initialMessages, sessionId }: ChatWindowPro
             <div className="flex w-full gap-3 items-start opacity-70">
               <div className="h-8 w-8 shrink-0 flex items-center justify-center rounded-full bg-[#a83b3b] text-white text-xs font-semibold">SAO</div>
               <div className="flex flex-col">
-                 <span className="font-semibold text-sm mb-1">SAO bot</span>
-                 <div className="flex gap-1 h-6 items-center">
-                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
-                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-75"></span>
-                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150"></span>
-                 </div>
+                <span className="font-semibold text-sm mb-1">SAO bot</span>
+                <div className="flex gap-1 h-6 items-center">
+                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
+                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-75"></span>
+                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150"></span>
+                </div>
               </div>
             </div>
           )}
@@ -215,23 +229,25 @@ export default function ChatWindow({ initialMessages, sessionId }: ChatWindowPro
 
       <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-white via-white to-transparent pt-10 pb-6">
         <div className="mx-auto max-w-3xl px-4">
-          <form 
+          <form
             onSubmit={handleSend}
-            className="relative flex items-center rounded-[2rem] border border-gray-200 bg-white py-2 pl-6 pr-2 shadow-[0_2px_8px_rgba(0,0,0,0.05)] transition-shadow focus-within:shadow-[0_4px_12px_rgba(0,0,0,0.08)]"
+            className="relative flex items-end rounded-[2rem] border border-gray-200 bg-white py-2 pl-6 pr-2 shadow-[0_2px_8px_rgba(0,0,0,0.05)] transition-shadow focus-within:shadow-[0_4px_12px_rgba(0,0,0,0.08)]"
           >
-            <input
-              type="text"
+            <textarea
+              ref={textareaRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={handleInput}
+              onKeyDown={handleKeyDown}
               placeholder="ส่งข้อความให้ SAO bot"
-              className="flex-1 border-none bg-transparent text-base text-gray-700 placeholder-gray-400 outline-none focus:ring-0"
+              rows={1}
+              className="flex-1 resize-none overflow-hidden border-none bg-transparent text-base text-gray-700 placeholder-gray-400 outline-none focus:ring-0 py-2 leading-6 max-h-48 overflow-y-auto"
               disabled={isLoading}
             />
 
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               disabled={!input.trim() || isLoading}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#a83b3b] text-white transition-colors hover:bg-[#8f3232] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#a83b3b] text-white transition-colors hover:bg-[#8f3232] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>

@@ -9,7 +9,9 @@ def map_references_to_document_ids(
     Maps LLM-generated reference strings to their document IDs
     using the metadata from retrieved documents.
     """
+    print(retrieved_docs)
     doc_mapping = _build_doc_mapping(retrieved_docs)
+    print(doc_mapping)
 
     return {
         ref: _find_best_match(ref, doc_mapping)
@@ -22,12 +24,12 @@ def _build_doc_mapping(retrieved_docs: list[dict[str, Any]]) -> dict[str, str]:
     mapping = {}
 
     for doc in retrieved_docs:
-        if "law_name" in doc and "document_id" in doc:
-            mapping[doc["law_name"]] = doc["document_id"]
+        if "law_name" in doc and "original_document_id" in doc:
+            mapping[doc["law_name"]] = doc["original_document_id"]
 
         for related in doc.get("related_documents", []):
-            if "law_name" in related and "document_id" in related:
-                mapping[related["law_name"]] = related["document_id"]
+            if "law_name" in related and "original_document_id" in related:
+                mapping[related["law_name"]] = related["original_document_id"]
 
     return mapping
 
