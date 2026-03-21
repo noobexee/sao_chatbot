@@ -6,6 +6,7 @@ from src.app.document.documentUpdate import DocumentUpdater
 from src.app.service.ocr_service import run_ocr_and_update_db
 from src.app.llm.gemini import GeminiLLM
 
+
 PROMPT_TEXT = """
   รวมเอกสาร {{AMEND_YEAR}} ({{AMEND_VERSION}}) เข้ากับเอกสาร {{BASE_YEAR}} 
   โดยให้เอกสาร {{AMEND_YEAR}} ({{AMEND_VERSION}}) เป็นตัวแก้ไขเอกสาร {{BASE_YEAR}}
@@ -84,7 +85,6 @@ class DocumentManager:
     def get_related_doc(self, doc_id: str) -> Optional[List[str]]:
         list = self.repo.get_related_doc(doc_id)
         return list
-
 
     # ---------- Create ----------
     def create_document(
@@ -226,6 +226,7 @@ class DocumentManager:
         )
 
         meta = self.repo.get_metadata(new_doc_id)
+        snapshot_source = self.repo.get_snapshot_sources(new_doc_id)
 
         self.updater.merge_documents(
             doc_data=meta,
@@ -233,7 +234,8 @@ class DocumentManager:
             new_doc_id=new_doc_id,
             text=merged_text,
             expire_date=meta.effective_date + timedelta(days=1),
-            amend_doc_id=amend_doc_id
+            amend_doc_id=amend_doc_id,
+            snapshot_sources=snapshot_source
         )
         self.repo.mark_done(base_doc_id)
 

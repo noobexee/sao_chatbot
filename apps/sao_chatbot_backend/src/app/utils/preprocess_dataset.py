@@ -8,7 +8,7 @@ from src.db.vector_store.vector_store import VectorStoreTransaction
 
 BASE_STORAGE = "storage"
 REGULATION_DIR = os.path.join(BASE_STORAGE, "regulations")  # For 'ระเบียบ'
-OTHERS_DIR = os.path.join(BASE_STORAGE, "others")          # For 'แนวทาง', 'คำสั่ง'
+OTHERS_DIR = os.path.join(BASE_STORAGE, "others")          # For 'แนวทาง', 'คำสั่ง', else
 
 def index_single_json_file(chunks: list, embedder: BGEEmbedder, is_regulation: bool = False):
     """
