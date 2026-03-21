@@ -63,11 +63,13 @@ class DocumentUpdater:
         doc_data: DocumentMeta,
         doc_id: str,
         text: str,
+        snapshot_sources: list,
         
     ) -> int:
         
         announce_date = str(doc_data.announce_date)
         effective_date = str(doc_data.effective_date)
+        version_to_source = self.build_version_to_source_map(snapshot_sources)
 
         if doc_data.type == "ระเบียบ" :
 
@@ -79,6 +81,7 @@ class DocumentUpdater:
                 version=doc_data.version,
                 document_id=doc_id,
                 doc_type=doc_data.type,
+                version_to_source=version_to_source
             )
         else :
             chunks = chunk_by_size(
@@ -114,7 +117,6 @@ class DocumentUpdater:
         version_to_source = self.build_version_to_source_map(snapshot_sources)
         delete_document_pipeline(amend_doc_id)
         update_document_expiry_pipeline(old_doc_id, expire_date)
-        delete_document_pipeline(new_doc_id)
 
         if doc_data.type == "ระเบียบ" :
             chunks = chunk_by_clause(

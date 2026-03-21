@@ -17,6 +17,8 @@ SECTION_HEADER_PATTERN = re.compile(
     r"ฉบับที่\s*([๐-๙]+)\)"
 )
 
+SECTION_HEADER_PREFIXES = ("**ข้อความ", "**ท้ายเอกสาร")
+
 def thai_to_int(thai_str: str) -> int:
     return int(thai_str.translate(str.maketrans(THAI_DIGITS, "0123456789")))
 
@@ -210,7 +212,7 @@ def chunk_by_clause(
                 current_clause_id  = "Preamble"
             continue
 
-        if stripped.startswith("**ข้อความ"):
+        if any(stripped.startswith(prefix) for prefix in SECTION_HEADER_PREFIXES):
             header_match = SECTION_HEADER_PATTERN.search(stripped)
             if header_match:
                 section_version = thai_to_int(header_match.group(1))
